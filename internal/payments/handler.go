@@ -1,0 +1,113 @@
+package payments
+
+import (
+	"math/big"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/hemzahk/wallet-api/internal/json"
+	"github.com/hemzahk/wallet-api/internal/store"
+)
+
+type handler struct {
+	service Service
+}
+
+func NewHandler(service Service) *handler {
+	return &handler{
+		service: service,
+	}
+}
+
+type CheckoutSessionDTO struct {
+	Amount string `json:"amount" validate:"required"`
+}
+
+func (h *handler) CreateCheckoutSession(w http.ResponseWriter, r *http.Request) {
+	var payload CheckoutSessionDTO
+	if err := json.ReadJSON(w, r, &payload); err != nil {
+		json.InternalServerError(w, r, err)
+		return
+	}
+
+	if err := json.Validate.Struct(payload); err != nil {
+		json.BadRequestResponse(w, r, err)
+		return
+	}
+
+	user := r.Context().Value("user").(*store.User)
+
+	token, err := h.service.CreateCheckoutSession(r.Context(), payload, user)
+	if err != nil {
+		json.InternalServerError(w, r, err)
+		return
+	}
+
+	res := struct {
+		Token string `json:"token"`
+	} {
+		Token: token,
+	}
+
+	if err := json.JsonResponse(w, http.StatusOK, res); err != nil {
+		json.InternalServerError(w, r, err)
+	}
+}
+
+func (h *handler) GetCheckoutSession(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+
+	session, err := h.service.GetCheckoutSession(r.Context(), token)
+	if err != nil {
+		json.InternalServerError(w, r, err)
+		return
+	}
+
+	bf := new(big.Float).SetInt(session.Amount)
+
+	// Divide by 100
+	divisor := big.NewFloat(100)
+	dzdAmount := new(big.Float).Quo(bf, divisor)
+
+	res := struct {
+		MerchantID string `json:"merchant_id"`
+		Amount string `json:"amount"`
+	}{
+		MerchantID: session.MerchantID.String(),
+		Amount : dzdAmount.String(),
+	}
+
+	if err := json.JsonResponse(w, http.StatusOK, res); err != nil {
+		json.InternalServerError(w, r, err)
+	}
+}
+
+type PaymentDTO struct {
+	MerchantID string `json:"merchant_id" validate:"required"`
+	Amount string `json:"amount" validate:"required"`
+	Reference string `json:"reference" validate:"required"`
+}
+
+func (h *handler) Pay(w http.ResponseWriter, r *http.Request) {
+	var payload PaymentDTO
+	if err := json.ReadJSON(w, r, &payload); err != nil {
+		json.InternalServerError(w, r, err)
+		return
+	}
+
+	if err := json.Validate.Struct(payload); err != nil {
+		json.BadRequestResponse(w, r, err)
+		return
+	}
+
+	user := r.Context().Value("user").(*store.User)
+
+	if err := h.service.Pay(r.Context(), payload, user); err != nil {
+		json.InternalServerError(w, r, err)
+		return
+	}
+
+	if err := json.JsonResponse(w, http.StatusOK, "success"); err != nil {
+		json.InternalServerError(w, r, err)
+	}
+}
