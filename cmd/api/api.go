@@ -116,19 +116,24 @@ func (app *application) mount() http.Handler {
 			r.Post("/token", userHandler.CreateToken)
 		})
 
+		idempotencyMiddleware := middlewares.NewIdempotencyMiddleware(app.store)
+
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware.AuthTokenMiddleware)
-
-			r.Post("/wallet/topup", walletHandler.Topup)
-			r.Post("/wallet/transfer", walletHandler.Transfer)
-			r.Post("/wallet/withdraw", walletHandler.Withdraw)
 			r.Get("/wallet", walletHandler.GetWallet)
 			
 			paymentService := payments.NewService(app.store, app.txManager)
 			paymentHandler := payments.NewHandler(paymentService)
 			r.Post("/payments/checkout-sessions", paymentHandler.CreateCheckoutSession)
 			r.Get("/payments/checkout-sessions/{token}", paymentHandler.GetCheckoutSession)
-			r.Post("/payments/checkout-sessions/{token}/pay", paymentHandler.Pay)
+
+			r.Group(func(r chi.Router) {
+				r.Use(idempotencyMiddleware.Wrap)
+				r.Post("/wallet/topup", walletHandler.Topup)
+				r.Post("/wallet/transfer", walletHandler.Transfer)
+				r.Post("/wallet/withdraw", walletHandler.Withdraw)
+				r.Post("/payments/checkout-sessions/{token}/pay", paymentHandler.Pay)
+			})
 		})
 	})
 

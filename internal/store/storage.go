@@ -53,6 +53,11 @@ type Storage struct {
 		Create(ctx context.Context, session *CheckoutSession) error
 		GetByToken(ctx context.Context, token string) (*CheckoutSession, error)
 	}
+
+	IdempotencyKeys interface {
+		Create(ctx context.Context, record IdempotencyKey)  error
+		Get(ctx context.Context, key string, userID uuid.UUID) (*IdempotencyKey, error)
+	}
 }
 
 func NewStorage(db *sql.DB) Storage {
@@ -63,21 +68,8 @@ func NewStorage(db *sql.DB) Storage {
 		Balances: &BalanceStore{db},
 		Merchants: &MerchantStore{db},
 		CheckoutSessions: &CheckoutSessionStore{db},
+		IdempotencyKeys: &IdempotencyKeyStore{db},
 	}
-}
-
-func withTx(db *sql.DB, ctx context.Context, fn func(*sql.Tx) error) error {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-
-	if err := fn(tx); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-
-	return tx.Commit()
 }
 
 func generateUUIDWithSuffix(module string) string {
