@@ -44,7 +44,7 @@ func (g *MockGateway) InitiatePayment(_ context.Context, amount *big.Int) (Gatew
 	}, nil
 }
 
-func (g *MockGateway) InitiatePayout(_ context.Context, withdrawalID uuid.UUID, amount *big.Int) (PayoutSession, error) {
+func (g *MockGateway) InitiatePayout(_ context.Context, amount *big.Int) (PayoutSession, error) {
 	gatewayRef := uuid.New().String()
 
 	return PayoutSession{

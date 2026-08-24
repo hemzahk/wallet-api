@@ -3,8 +3,6 @@ package gateway
 import (
 	"context"
 	"math/big"
-
-	"github.com/google/uuid"
 )
 
 type GatewaySession struct {
@@ -18,6 +16,6 @@ type PayoutSession struct {
 
 type PaymentGateway interface {
 	InitiatePayment(ctx context.Context, amount *big.Int) (GatewaySession, error)
-	InitiatePayout(_ context.Context, withdrawalID uuid.UUID, amount *big.Int) (PayoutSession, error)
+	InitiatePayout(_ context.Context, amount *big.Int) (PayoutSession, error)
 	VerifyWebhookSignature(payload []byte, signature string) error
 }

@@ -158,5 +158,37 @@ func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Tra
 	return transaction, nil
 }
 
+func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error) {
+	query := `
+		SELECT t.precise_amount, t.description, t.created_at
+		FROM transactions t
+		JOIN balances b ON (b.balance_id = t."source" OR b.balance_id = t.destination)
+		WHERE b.identity_id = $1 AND t.destination <> '@Revenue'
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, query, identityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var transactions []Transaction
+	for rows.Next() {
+		var t Transaction
+		var rawAmount int64
+		if err := rows.Scan(&rawAmount, &t.Description, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		amountAsBigInt := big.NewInt(rawAmount)
+		t.PreciseAmount = amountAsBigInt
+		transactions = append(transactions, t)
+	}
+
+	return transactions, nil
+}
+
 
 

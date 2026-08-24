@@ -31,6 +31,7 @@ type Storage struct {
 		//RecordTransaction(ctx context.Context, transaction *Transaction) error
 		Record(ctx context.Context, transaction *Transaction) error
 		GetByRef(ctx context.Context, reference string) (*Transaction, error)
+		GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error)
 		// RecordTransactionAndUpdateBalance(ctx context.Context, transaction *Transaction, sourceBalance, destinationBalance *Balance) error
 	}
 

@@ -17,15 +17,21 @@ var (
 	ErrInvalidAmount = errors.New("invalid DZD amount")
 	ErrTopupAlreadyCompleted = errors.New("topup already completed")
 	ErrTopupAlreadyFailed =  errors.New("topup already failed")
+
+	ErrWithdrawalAlreadyCompleted = errors.New("withdrawal already completed")
+	ErrWithdrawalAlreadyFailed = errors.New("withdrawal already failed")
+
 	ErrGatewayFailure = errors.New("gateway error: topup failed")
 )
 
 type Service interface {
 	Topup(ctx context.Context, payload TopupDTO, user *store.User) (*gateway.GatewaySession,error)
 	TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error
-	Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.User) error
+	Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.User) (*gateway.PayoutSession, error)
+	PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 	Transfer(ctx context.Context, payload TransferDTO, user *store.User) error
 	GetWallet(ctx context.Context, userID uuid.UUID) (*big.Float, error)
+	GetTransactionHistory(ctx context.Context, identityID uuid.UUID) ([]store.Transaction, error)
 }
 
 type svc struct {
@@ -155,30 +161,36 @@ func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
 	return nil
 }
 
-func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.User) error {
+func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.User) (*gateway.PayoutSession, error) {
 	amount, err := amountInCentimes(payload.Amount)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	sourceBalance, err := s.store.Balances.GetByIdentityID(ctx, user.IdentityID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// check sufficient balance
 	if sourceBalance.Balance.Cmp(amount) < 0 {
-		return err // return a comprehensive error
+		return nil, err // return a comprehensive error
 	}
 
 	destinationBalance, err := s.store.Balances.GetByBalanceID(ctx, "@World")
 
-	sourceBalance.Balance.Sub(sourceBalance.Balance, amount)
-	destinationBalance.Balance.Add(destinationBalance.Balance, amount)
+	session, err := s.gateway.InitiatePayout(ctx, amount)
+	if err != nil {
+		return nil,err
+	}
 
+	// don't update balance until confirmation from payout webhook
+	// sourceBalance.Balance.Sub(sourceBalance.Balance, amount)
+	// destinationBalance.Balance.Add(destinationBalance.Balance, amount)
+	ref := fmt.Sprintf("withdrawal_%s", session.GatewayRef)
 	transaction := &store.Transaction{
 		ID: uuid.New(),
-		Reference: payload.Reference,
+		Reference: ref,
 		PreciseAmount: amount,
 		Source: sourceBalance.BalanceID,
 		Destination: destinationBalance.BalanceID,
@@ -192,11 +204,86 @@ func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.U
 			return err
 		}
 
-		if err := s.store.Balances.UpdateBalance(ctx, sourceBalance); err != nil {
+		// don't update balance until confirmation from payout webhook
+		// if err := s.store.Balances.UpdateBalance(ctx, sourceBalance); err != nil {
+		// 	return err
+		// }
+
+		// if err := s.store.Balances.UpdateBalance(ctx, destinationBalance); err != nil {
+		// 	return err
+		// }
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error {
+	ref := fmt.Sprintf("withdrawal_%s", payload.GatewayRef)
+	parentTransaction, err := s.store.Transactions.GetByRef(ctx, ref)
+	if err != nil {
+		return err
+	}
+
+	// payment gateway failure
+	if payload.Status == "failed" {
+		childTransaction := &store.Transaction{
+			ID: uuid.New(),
+			ParentTransaction: parentTransaction.ID,
+			PreciseAmount: parentTransaction.PreciseAmount,
+			Reference: fmt.Sprintf("withdrawal_%s", uuid.New().String()),
+			Source: parentTransaction.Source,
+			Destination: parentTransaction.Destination,
+			Status: "rejected",
+			Description: parentTransaction.Description,
+			CreatedAt: time.Now(),
+		}
+
+		if err := s.store.Transactions.Record(ctx, childTransaction); err != nil {
 			return err
 		}
 
-		if err := s.store.Balances.UpdateBalance(ctx, destinationBalance); err != nil {
+		return ErrGatewayFailure
+	}
+	
+	// already applied transaction or rejected transaction : return an error no further processing
+	switch parentTransaction.Status {
+		case "applied": 
+			return ErrWithdrawalAlreadyCompleted
+		case "rejected":
+			return ErrWithdrawalAlreadyFailed
+	}
+
+	balance, err := s.store.Balances.GetByBalanceID(ctx, parentTransaction.Source)
+	if err != nil {
+		return err
+	}
+
+
+	err = s.txManager.WithTx(ctx, func(ctx context.Context) error {
+		// insert new transaction to update status 
+		childTransaction := &store.Transaction{
+			ID: uuid.New(),
+			ParentTransaction: parentTransaction.ID,
+			PreciseAmount: parentTransaction.PreciseAmount,
+			Reference: fmt.Sprintf("withdrawal_%s", uuid.New().String()),
+			Source: parentTransaction.Source,
+			Destination: parentTransaction.Destination,
+			Status: "applied",
+			Description: parentTransaction.Description,
+			CreatedAt: time.Now(),
+		}
+
+		if err := s.store.Transactions.Record(ctx,childTransaction ); err != nil {
+			return err
+		}
+
+		// update customer's balance: 
+		balance.Balance.Sub(balance.Balance, parentTransaction.PreciseAmount)
+		if err := s.store.Balances.UpdateBalance(ctx, balance); err != nil {
 			return err
 		}
 
@@ -205,8 +292,10 @@ func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.U
 	if err != nil {
 		return err
 	}
-	return nil
+
+	return nil 
 }
+
 func (s *svc) Transfer(ctx context.Context, payload TransferDTO, user *store.User) error {
 	amount, err := amountInCentimes(payload.Amount)
 	if err != nil {
@@ -275,13 +364,18 @@ func (s *svc) GetWallet(ctx context.Context, userID uuid.UUID) (*big.Float, erro
 		return nil, err
 	}
 
-	bf := new(big.Float).SetInt(balance.Balance)
-
-	// Divide by 100
-	divisor := big.NewFloat(100)
-	dzdBalance := new(big.Float).Quo(bf, divisor)
+	dzdBalance := toFloat(balance.Balance)
 
 	return dzdBalance, nil
+}
+
+func (s *svc) GetTransactionHistory(ctx context.Context, identityID uuid.UUID) ([]store.Transaction, error) {
+	transactions, err := s.store.Transactions.GetByIdentityID(ctx, identityID)
+	if err != nil {
+		return nil, err
+	}
+
+	return transactions, nil
 }
 
 func amountInCentimes(amount string) (*big.Int, error) {
@@ -296,4 +390,12 @@ func amountInCentimes(amount string) (*big.Int, error) {
 	centimes := new(big.Int).Set(rat.Num())
 
 	return centimes, nil
+}
+
+func toFloat(val *big.Int) *big.Float {
+	bf := new(big.Float).SetInt(val)
+
+	// Divide by 100
+	divisor := big.NewFloat(100)
+	return new(big.Float).Quo(bf, divisor)
 }

@@ -109,6 +109,7 @@ func (app *application) mount() http.Handler {
 		walletHandler := wallets.NewHandler(walletService, app.gateway)
 
 		r.Post("/webhooks/topup", walletHandler.TopupWebhook)
+		r.Post("/webhooks/payout", walletHandler.PayoutWebhook)
 		
 		r.Route("/authentication", func(r chi.Router) {
 			r.Post("/user", userHandler.RegisterUser)
@@ -121,6 +122,7 @@ func (app *application) mount() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware.AuthTokenMiddleware)
 			r.Get("/wallet", walletHandler.GetWallet)
+			r.Get("/wallet/transactions", walletHandler.GetTransactionHistory)
 			
 			paymentService := payments.NewService(app.store, app.txManager)
 			paymentHandler := payments.NewHandler(paymentService)
