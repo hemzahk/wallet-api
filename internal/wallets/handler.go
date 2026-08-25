@@ -35,6 +35,8 @@ type WithdrawalDTO struct {
 }
 
 type PayoutWebhookDTO struct {
+	EventID  string `json:"event_id"`
+	SourceID string `json:"source_id"` // for our PSP 645b44fb-314f-4e34-8106-17b09cc9660a
 	GatewayRef string          `json:"gateway_ref"`
 	Status     string          `json:"status"`
 	Amount     string 		   `json:"amount"`
@@ -66,6 +68,8 @@ func (h *handler) Topup(w http.ResponseWriter, r *http.Request) {
 }
 
 type TopupWebhookDTO struct {
+	EventID  string `json:"event_id"`
+	SourceID string `json:"source_id"` // for our PSP 645b44fb-314f-4e34-8106-17b09cc9660a
 	GatewayRef string          `json:"gateway_ref"`
 	Status     string          `json:"status"`
 	Amount     string 		   `json:"amount"`

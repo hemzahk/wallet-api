@@ -22,6 +22,8 @@ var (
 	ErrWithdrawalAlreadyFailed = errors.New("withdrawal already failed")
 
 	ErrGatewayFailure = errors.New("gateway error: topup failed")
+
+	ErrWebhookAlreadyProcessed = errors.New("webhook already processed")
 )
 
 type Service interface {
@@ -87,6 +89,15 @@ func (s *svc) Topup(ctx context.Context, payload TopupDTO, user *store.User) (*g
 }
 
 func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
+
+	isDuplicate, err := s.store.WebhookEventIDs.IsDuplicate(ctx, payload.SourceID, payload.EventID)
+	if err != nil {
+		return err
+	}
+
+	if isDuplicate {
+		return ErrWebhookAlreadyProcessed
+	}
 
 	ref := fmt.Sprintf("topup_%s", payload.GatewayRef)
 	parentTransaction, err := s.store.Transactions.GetByRef(ctx, ref)
@@ -222,6 +233,16 @@ func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.U
 }
 
 func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error {
+
+	isDuplicate, err := s.store.WebhookEventIDs.IsDuplicate(ctx, payload.SourceID, payload.EventID)
+	if err != nil {
+		return err
+	}
+
+	if isDuplicate {
+		return ErrWebhookAlreadyProcessed
+	}
+
 	ref := fmt.Sprintf("withdrawal_%s", payload.GatewayRef)
 	parentTransaction, err := s.store.Transactions.GetByRef(ctx, ref)
 	if err != nil {

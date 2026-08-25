@@ -59,6 +59,10 @@ type Storage struct {
 		Create(ctx context.Context, record IdempotencyKey)  error
 		Get(ctx context.Context, key string, userID uuid.UUID) (*IdempotencyKey, error)
 	}
+
+	WebhookEventIDs interface {
+		IsDuplicate(ctx context.Context, sourceID, eventID string) (bool, error)
+	}
 }
 
 func NewStorage(db *sql.DB) Storage {
@@ -70,6 +74,7 @@ func NewStorage(db *sql.DB) Storage {
 		Merchants: &MerchantStore{db},
 		CheckoutSessions: &CheckoutSessionStore{db},
 		IdempotencyKeys: &IdempotencyKeyStore{db},
+		WebhookEventIDs: &WebhookEventIDStore{db},
 	}
 }
 
