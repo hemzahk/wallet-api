@@ -17,6 +17,7 @@ type Balance struct {
 	Currency string `json:"currency"`
 	LedgerID string `json:"ledger_id"`
 	IdentityID uuid.UUID `json:"identity_id"`
+	Version int `json:"version"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -52,7 +53,7 @@ func (s *BalanceStore) CreateBalance(ctx context.Context, balance *Balance) erro
 
 func (s *BalanceStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID) (*Balance, error) {
 	query := `
-		SELECT id, balance_id, balance, identity_id, ledger_id, currency ,created_at
+		SELECT id, balance_id, balance, identity_id, ledger_id, currency , version, created_at
 		FROM balances
 		WHERE identity_id = $1
 	`
@@ -69,6 +70,7 @@ func (s *BalanceStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID
 		&balance.IdentityID, 
 		&balance.LedgerID,
 		&balance.Currency, 
+		&balance.Version,
 		&balance.CreatedAt,
 	)
 	if err != nil {
@@ -81,7 +83,7 @@ func (s *BalanceStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID
 
 func (s *BalanceStore) GetByEmail(ctx context.Context, email string) (*Balance, error) {
 	query := `
-		SELECT b.id, b.identity_id, b.ledger_id, b.balance_id, b.balance, b.currency, b.created_at 
+		SELECT b.id, b.identity_id, b.ledger_id, b.balance_id, b.balance, b.currency, b.version, b.created_at 
 		FROM balances b 
 		JOIN users u ON (b.identity_id = u.identity_id)
 		WHERE u.email = $1
@@ -100,6 +102,7 @@ func (s *BalanceStore) GetByEmail(ctx context.Context, email string) (*Balance, 
 		&balance.BalanceID, 
 		&balanceAsInt,
 		&balance.Currency,
+		&balance.Version,
 		&balance.CreatedAt,
 	)
 	if err != nil {
@@ -114,7 +117,7 @@ func (s *BalanceStore) GetByEmail(ctx context.Context, email string) (*Balance, 
 
 func (s *BalanceStore) GetByUserID(ctx context.Context, userID uuid.UUID) (*Balance, error) {
 	query := `
-		SELECT b.id, b.identity_id, b.ledger_id, b.balance_id, b.balance, b.currency, b.created_at 
+		SELECT b.id, b.identity_id, b.ledger_id, b.balance_id, b.balance, b.currency, b.version, b.created_at 
 		FROM balances b 
 		JOIN users u ON (b.identity_id = u.identity_id)
 		WHERE u.id = $1
@@ -133,6 +136,7 @@ func (s *BalanceStore) GetByUserID(ctx context.Context, userID uuid.UUID) (*Bala
 		&balance.BalanceID, 
 		&balanceAsInt,
 		&balance.Currency,
+		&balance.Version,
 		&balance.CreatedAt,
 	)
 	if err != nil {
@@ -147,7 +151,7 @@ func (s *BalanceStore) GetByUserID(ctx context.Context, userID uuid.UUID) (*Bala
 
 func (s *BalanceStore) GetByBalanceID(ctx context.Context, balanceID string) (*Balance, error) {
 	query := `
-		SELECT id, balance_id, balance, identity_id, ledger_id, currency ,created_at
+		SELECT id, balance_id, balance, identity_id, ledger_id, currency, version, created_at
 		FROM balances
 		WHERE balance_id = $1
 	`
@@ -165,6 +169,7 @@ func (s *BalanceStore) GetByBalanceID(ctx context.Context, balanceID string) (*B
 		&balance.IdentityID, 
 		&balance.LedgerID,
 		&balance.Currency, 
+		&balance.Version,
 		&balance.CreatedAt,
 	)
 	if err != nil {
@@ -179,7 +184,7 @@ func (s *BalanceStore) GetByBalanceID(ctx context.Context, balanceID string) (*B
 
 func (s *BalanceStore) GetByMerchantID(ctx context.Context, merchantID uuid.UUID) (*Balance, error) {
 	query := `
-		SELECT b.id, b.identity_id, b.ledger_id, b.balance_id, b.balance, b.currency, b.created_at 
+		SELECT b.id, b.identity_id, b.ledger_id, b.balance_id, b.balance, b.currency, b.version, b.created_at 
 		FROM balances b 
 		JOIN users u ON (b.identity_id = u.identity_id)
 		JOIN merchants m ON (u.id = m.user_id)
@@ -198,6 +203,7 @@ func (s *BalanceStore) GetByMerchantID(ctx context.Context, merchantID uuid.UUID
 		&balance.BalanceID,
 		&rawBalance,
 		&balance.Currency,
+		&balance.Version,
 		&balance.CreatedAt,
 	)
 	if err != nil {
@@ -214,14 +220,14 @@ func (s *BalanceStore) UpdateBalance(ctx context.Context, balance *Balance) erro
 	dbtx := dbtx.ExtractTx(ctx, s.db)
 	
 	query := `
-		UPDATE balances SET balance = $1
-		WHERE balance_id = $2
+		UPDATE balances SET balance = $1, version = version + 1
+		WHERE balance_id = $2 AND version = $3
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	_, err := dbtx.ExecContext(ctx, query, balance.Balance.Int64(), balance.BalanceID)
+	_, err := dbtx.ExecContext(ctx, query, balance.Balance.Int64(), balance.BalanceID, balance.Version)
 	if err != nil {
 		return err
 	}
