@@ -17,6 +17,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	customerRoleID int64 = 1
+	merchantRoleID int64 = 2
+)
+
 var (
 	ErrUnauthorized = errors.New("unauthorized")
 )
@@ -57,6 +62,7 @@ func (s *svc) Register(ctx context.Context, payload RegisterDTO) (string, error)
 		Email: payload.Email,
 		IdentityID: uuid.New(),
 		IsActive: false,
+		RoleID: customerRoleID,
 		CreatedAt: time.Now(),
 	}
 	
@@ -184,6 +190,7 @@ func (s *svc) RegisterMerchant(ctx context.Context, payload RegisterMerchantDTO)
 		Email: payload.Email,
 		IdentityID: uuid.New(),
 		IsActive: false,
+		RoleID: merchantRoleID,
 		CreatedAt: time.Now(),
 	}
 	

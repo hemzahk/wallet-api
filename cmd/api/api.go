@@ -126,15 +126,15 @@ func (app *application) mount() http.Handler {
 			
 			paymentService := payments.NewService(app.store, app.txManager)
 			paymentHandler := payments.NewHandler(paymentService)
-			r.Post("/payments/checkout-sessions", paymentHandler.CreateCheckoutSession)
-			r.Get("/payments/checkout-sessions/{token}", paymentHandler.GetCheckoutSession)
+			r.Post("/payments/checkout-sessions", authMiddleware.CheckRequiredRole("merchant", paymentHandler.CreateCheckoutSession))
+			r.Get("/payments/checkout-sessions/{token}", authMiddleware.CheckRequiredRole("customer", paymentHandler.GetCheckoutSession))
 
 			r.Group(func(r chi.Router) {
 				r.Use(idempotencyMiddleware.Wrap)
-				r.Post("/wallet/topup", walletHandler.Topup)
-				r.Post("/wallet/transfer", walletHandler.Transfer)
-				r.Post("/wallet/withdraw", walletHandler.Withdraw)
-				r.Post("/payments/checkout-sessions/{token}/pay", paymentHandler.Pay)
+				r.Post("/wallet/topup",authMiddleware.CheckRequiredRole("customer", walletHandler.Topup) )
+				r.Post("/wallet/transfer", authMiddleware.CheckRequiredRole("customer", walletHandler.Transfer))
+				r.Post("/wallet/withdraw",authMiddleware.CheckRequiredRole("customer", walletHandler.Withdraw) )
+				r.Post("/payments/checkout-sessions/{token}/pay",authMiddleware.CheckRequiredRole("customer", paymentHandler.Pay))
 			})
 		})
 	})

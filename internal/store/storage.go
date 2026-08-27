@@ -63,6 +63,10 @@ type Storage struct {
 	WebhookEventIDs interface {
 		IsDuplicate(ctx context.Context, sourceID, eventID string) (bool, error)
 	}
+
+	Roles interface {
+		GetByName(ctx context.Context, roleName string) (*Role, error)
+	}
 }
 
 func NewStorage(db *sql.DB) Storage {
@@ -75,6 +79,7 @@ func NewStorage(db *sql.DB) Storage {
 		CheckoutSessions: &CheckoutSessionStore{db},
 		IdempotencyKeys: &IdempotencyKeyStore{db},
 		WebhookEventIDs: &WebhookEventIDStore{db},
+		Roles: &RoleStore{db},
 	}
 }
 

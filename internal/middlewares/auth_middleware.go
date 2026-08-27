@@ -71,3 +71,22 @@ func (a *AuthMiddleware) AuthTokenMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
+func (a *AuthMiddleware) CheckRequiredRole(requiredRole string, next http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		role, err := a.store.Roles.GetByName(r.Context(), requiredRole)
+		if err != nil {
+			json.ForbiddenResponse(w, r)
+			return
+		}
+
+		user := r.Context().Value("user").(*store.User)
+
+		if role.Name != user.Role.Name {
+			json.ForbiddenResponse(w,r)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}

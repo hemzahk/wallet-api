@@ -16,6 +16,7 @@ import (
 
 var (
 	ErrInvalidAmount = errors.New("invalid DZD amount")
+	ErrInsufficientBalance = errors.New("insufficient balance")
 )
 
 type Service interface {
@@ -77,6 +78,10 @@ func (s *svc) GetCheckoutSession(ctx context.Context, token string) (*store.Chec
 	return session, nil
 }
 
+// in the current payment logic a merchant can pay theyself. 
+// add a simple guard source == destination -> err
+// then prevent this using authorization.
+
 func (s *svc) Pay(ctx context.Context, payload PaymentDTO, user *store.User) error {
 	amount, err := amountInCentimes(payload.Amount)
 	if err != nil {
@@ -90,7 +95,7 @@ func (s *svc) Pay(ctx context.Context, payload PaymentDTO, user *store.User) err
 
 	// check sufficient balance:
 	if sourceBalance.Balance.Cmp(amount) < 0 {
-		return fmt.Errorf("insufficient balance")
+		return ErrInsufficientBalance
 	}
 
 	merchantID, _ := uuid.Parse(payload.MerchantID)
@@ -99,6 +104,11 @@ func (s *svc) Pay(ctx context.Context, payload PaymentDTO, user *store.User) err
 	merchantBalance, err := s.store.Balances.GetByMerchantID(ctx, merchantID)
 	if err != nil {
 		return err
+	}
+
+	// simple guard to prevent merchants from paying themselves 
+	if sourceBalance.BalanceID == merchantBalance.BalanceID {
+		return errors.New("you can't pay yourself")
 	}
 	
 	// debit customer

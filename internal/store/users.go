@@ -17,6 +17,8 @@ type User struct {
 	Email string `json:"email"`
 	Password password `json:"-"`
 	IdentityID uuid.UUID `json:"identity_id"`
+	RoleID int64 `json:"role_id"`
+	Role Role `json:"role"`
 	IsActive bool `json:"is_active"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -74,9 +76,10 @@ func (s *UserStore) GetByEmail(ctx context.Context, email string) (*User, error)
 
 func (s *UserStore) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	query := `
-		SELECT id, email, identity_id, is_active, created_at
+		SELECT users.id, email, identity_id, is_active, role_id, created_at, roles.*
 		FROM users
-		WHERE id = $1
+		JOIN roles ON (users.role_id = roles.id)
+		WHERE users.id = $1 AND users.is_active = true
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
@@ -88,7 +91,11 @@ func (s *UserStore) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
 		&user.Email, 
 		&user.IdentityID,
 		&user.IsActive,
+		&user.RoleID,
 		&user.CreatedAt,
+		&user.Role.ID,
+		&user.Role.Name,
+		&user.Role.Description,
 	)
 	if err != nil {
 		return nil, err
@@ -101,8 +108,8 @@ func (s *UserStore) Create(ctx context.Context, user *User) error {
 	dbtx := dbtx.ExtractTx(ctx, s.db)
 
 	query := `
-		INSERT INTO users (id, email, password, identity_id, is_active, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6)
+		INSERT INTO users (id, email, password, identity_id, is_active, role_id, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
@@ -115,6 +122,7 @@ func (s *UserStore) Create(ctx context.Context, user *User) error {
 							 &user.Password.hash,
 							 &user.IdentityID,
 							 &user.IsActive,
+							 &user.RoleID,
 							 &user.CreatedAt,
 							)		
 	if err != nil {
