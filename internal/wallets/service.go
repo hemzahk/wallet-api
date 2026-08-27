@@ -21,7 +21,7 @@ var (
 	ErrWithdrawalAlreadyCompleted = errors.New("withdrawal already completed")
 	ErrWithdrawalAlreadyFailed = errors.New("withdrawal already failed")
 
-	ErrGatewayFailure = errors.New("gateway error: topup failed")
+	ErrGatewayFailure = errors.New("gateway error: failed")
 
 	ErrWebhookAlreadyProcessed = errors.New("webhook already processed")
 )
@@ -195,9 +195,10 @@ func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.U
 		return nil,err
 	}
 
-	// don't update balance until confirmation from payout webhook
-	// sourceBalance.Balance.Sub(sourceBalance.Balance, amount)
-	// destinationBalance.Balance.Add(destinationBalance.Balance, amount)
+	// fund reservation
+	sourceBalance.Balance.Sub(sourceBalance.Balance, amount)
+	sourceBalance.InflightDebitBalance.Add(sourceBalance.InflightDebitBalance, amount)
+
 	ref := fmt.Sprintf("withdrawal_%s", session.GatewayRef)
 	transaction := &store.Transaction{
 		ID: uuid.New(),
@@ -215,10 +216,10 @@ func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.U
 			return err
 		}
 
-		// don't update balance until confirmation from payout webhook
-		// if err := s.store.Balances.UpdateBalance(ctx, sourceBalance); err != nil {
-		// 	return err
-		// }
+		// fund reservation
+		if err := s.store.Balances.UpdateBalance(ctx, sourceBalance); err != nil {
+			return err
+		}
 
 		// if err := s.store.Balances.UpdateBalance(ctx, destinationBalance); err != nil {
 		// 	return err
@@ -258,12 +259,31 @@ func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 			Reference: fmt.Sprintf("withdrawal_%s", uuid.New().String()),
 			Source: parentTransaction.Source,
 			Destination: parentTransaction.Destination,
-			Status: "rejected",
+			Status: "void",
 			Description: parentTransaction.Description,
 			CreatedAt: time.Now(),
 		}
 
-		if err := s.store.Transactions.Record(ctx, childTransaction); err != nil {
+		balance, err := s.store.Balances.GetByBalanceID(ctx, parentTransaction.Source)
+		if err != nil {
+			return err
+		}
+		
+		balance.Balance.Add(balance.Balance, parentTransaction.PreciseAmount)
+		balance.InflightDebitBalance.Sub(balance.InflightDebitBalance, parentTransaction.PreciseAmount)
+
+		err = s.txManager.WithTx(ctx, func(ctx context.Context) error {
+			if err := s.store.Transactions.Record(ctx, childTransaction); err != nil {
+				return err
+			}
+
+			if err := s.store.Balances.UpdateBalance(ctx, balance); err != nil {
+				return nil
+			}
+
+			return nil
+		})
+		if err != nil {
 			return err
 		}
 
@@ -274,7 +294,7 @@ func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 	switch parentTransaction.Status {
 		case "applied": 
 			return ErrWithdrawalAlreadyCompleted
-		case "rejected":
+		case "void":
 			return ErrWithdrawalAlreadyFailed
 	}
 
@@ -282,7 +302,6 @@ func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 	if err != nil {
 		return err
 	}
-
 
 	err = s.txManager.WithTx(ctx, func(ctx context.Context) error {
 		// insert new transaction to update status 
@@ -298,12 +317,13 @@ func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 			CreatedAt: time.Now(),
 		}
 
-		if err := s.store.Transactions.Record(ctx,childTransaction ); err != nil {
+		if err := s.store.Transactions.Record(ctx,childTransaction); err != nil {
 			return err
 		}
 
-		// update customer's balance: 
-		balance.Balance.Sub(balance.Balance, parentTransaction.PreciseAmount)
+		// update customer's inflight_debit_balance: 
+		balance.InflightDebitBalance.Sub(balance.InflightDebitBalance, parentTransaction.PreciseAmount)
+
 		if err := s.store.Balances.UpdateBalance(ctx, balance); err != nil {
 			return err
 		}
