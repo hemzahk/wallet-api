@@ -160,10 +160,10 @@ func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Tra
 
 func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error) {
 	query := `
-		SELECT t.precise_amount, t.description, t.created_at
+		SELECT t.precise_amount, t.description, t.created_at, t.source, t.destination
 		FROM transactions t
 		JOIN balances b ON (b.balance_id = t."source" OR b.balance_id = t.destination)
-		WHERE b.identity_id = $1 AND t.destination <> '@Revenue'
+		WHERE b.identity_id = $1 AND t.destination <> '@Revenue' AND status <> 'inflight'
 	`
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
@@ -179,7 +179,7 @@ func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.
 	for rows.Next() {
 		var t Transaction
 		var rawAmount int64
-		if err := rows.Scan(&rawAmount, &t.Description, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&rawAmount, &t.Description, &t.CreatedAt, &t.Source, &t.Destination); err != nil {
 			return nil, err
 		}
 		amountAsBigInt := big.NewInt(rawAmount)

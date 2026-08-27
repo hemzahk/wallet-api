@@ -33,7 +33,7 @@ type Service interface {
 	PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 	Transfer(ctx context.Context, payload TransferDTO, user *store.User) error
 	GetWallet(ctx context.Context, userID uuid.UUID) (*big.Float, error)
-	GetTransactionHistory(ctx context.Context, identityID uuid.UUID) ([]store.Transaction, error)
+	GetTransactionHistory(ctx context.Context, identityID uuid.UUID) (*store.Balance, []store.Transaction, error)
 }
 
 type svc struct {
@@ -390,13 +390,18 @@ func (s *svc) GetWallet(ctx context.Context, userID uuid.UUID) (*big.Float, erro
 	return dzdBalance, nil
 }
 
-func (s *svc) GetTransactionHistory(ctx context.Context, identityID uuid.UUID) ([]store.Transaction, error) {
-	transactions, err := s.store.Transactions.GetByIdentityID(ctx, identityID)
+func (s *svc) GetTransactionHistory(ctx context.Context, identityID uuid.UUID) (*store.Balance, []store.Transaction, error) {
+	balance, err := s.store.Balances.GetByIdentityID(ctx, identityID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return transactions, nil
+	transactions, err := s.store.Transactions.GetByIdentityID(ctx, identityID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return balance, transactions, nil
 }
 
 func amountInCentimes(amount string) (*big.Int, error) {
