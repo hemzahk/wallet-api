@@ -343,6 +343,11 @@ func (s *svc) Transfer(ctx context.Context, payload TransferDTO, user *store.Use
 		return fmt.Errorf("you can't transfer money to yourself")
 	}
 
+	// preventing money transfers to merchants (customer -> merchant)
+	if destinationBalance.LedgerID == "merchant_ledger_id" {
+		return fmt.Errorf("you can't transfer money to a merchant")
+	}
+
 	sourceBalance.Balance.Sub(sourceBalance.Balance, amount)
 	destinationBalance.Balance.Add(destinationBalance.Balance, amount)
 
