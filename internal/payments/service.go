@@ -22,7 +22,7 @@ var (
 type Service interface {
 	CreateCheckoutSession(ctx context.Context, payload CheckoutSessionDTO, user *store.User)(string, error)
 	GetCheckoutSession(ctx context.Context, token string) (*store.CheckoutSession, error)
-	Pay(ctx context.Context, payload PaymentDTO, user *store.User) error
+	Pay(ctx context.Context, token string, user *store.User) error
 }
 
 type svc struct {
@@ -78,91 +78,80 @@ func (s *svc) GetCheckoutSession(ctx context.Context, token string) (*store.Chec
 	return session, nil
 }
 
-// in the current payment logic a merchant can pay theyself. 
-// add a simple guard source == destination -> err
-// then prevent this using authorization.
+func (s *svc) Pay(ctx context.Context, token string, user *store.User) error {
+	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
+		session, err := s.store.CheckoutSessions.GetByToken(ctx, token)
+		if err != nil {
+			return err
+		}
 
-func (s *svc) Pay(ctx context.Context, payload PaymentDTO, user *store.User) error {
-	amount, err := amountInCentimes(payload.Amount)
-	if err != nil {
-		return err
-	}
-	// get user's balance:
-	sourceBalance, err := s.store.Balances.GetByUserID(ctx, user.ID)
-	if err != nil {
-		return err
-	}
+		sourceBalance, err := s.store.Balances.GetByUserID(ctx, user.ID)
+		if err != nil {
+			return fmt.Errorf("fetching balance: %w", err)
+		}
 
-	// check sufficient balance:
-	if sourceBalance.Balance.Cmp(amount) < 0 {
-		return ErrInsufficientBalance
-	}
+		// check sufficient balance:
+		if sourceBalance.Balance.Cmp(session.Amount) < 0 {
+			return ErrInsufficientBalance
+		}
 
-	merchantID, _ := uuid.Parse(payload.MerchantID)
+		merchantBalance, err := s.store.Balances.GetByMerchantID(ctx, session.MerchantID)
+		if err != nil {
+			return fmt.Errorf("fetching balance: %w", err)
+		}
 
-	// get merchant balance 
-	merchantBalance, err := s.store.Balances.GetByMerchantID(ctx, merchantID)
-	if err != nil {
-		return err
-	}
+		// @Revenue
+		revenueBalance, err := s.store.Balances.GetByBalanceID(ctx, "@Revenue")
+		if err != nil {
+			return fmt.Errorf("fetching balance: %w", err)
+		}
 
-	// simple guard to prevent merchants from paying themselves 
-	if sourceBalance.BalanceID == merchantBalance.BalanceID {
-		return errors.New("you can't pay yourself")
-	}
-	
-	// debit customer
-	sourceBalance.Balance.Sub(sourceBalance.Balance, amount)
-	
-	// calculate platform fees
-	platformFee := calculateFeeCeil(amount)
+		// debit customer
+		sourceBalance.Balance.Sub(sourceBalance.Balance, session.Amount)
 
-	// calculate merchant net
-	merchantNet := amount.Sub(amount, platformFee)
+		// calculate platform fees
+		platformFee := calculateFeeCeil(session.Amount)
 
-	// credit merchant 
-	merchantBalance.Balance.Add(merchantBalance.Balance, merchantNet)
+		// calculate merchant net
+		merchantNet := session.Amount.Sub(session.Amount, platformFee)
 
-	// @Revenue
-	revenueBalance, err := s.store.Balances.GetByBalanceID(ctx, "@Revenue")
-	if err != nil {
-		return err
-	}
+		// credit merchant 
+		merchantBalance.Balance.Add(merchantBalance.Balance, merchantNet)
 
-	// credit @Revenue
-	revenueBalance.Balance.Add(revenueBalance.Balance, platformFee)
+		// credit @Revenue
+		revenueBalance.Balance.Add(revenueBalance.Balance, platformFee)
 
-	parentTransaction := &store.Transaction{
-		ID: uuid.New(),
-		Reference: payload.Reference,
-		PreciseAmount: merchantNet,
-		Source: sourceBalance.BalanceID,
-		Destination: merchantBalance.BalanceID,
-		Status: "applied",
-		Description: "payment",
-		CreatedAt: time.Now(),
-	}
+		parentTransaction := &store.Transaction{
+			ID: uuid.New(),
+			Reference: fmt.Sprintf("payment_%s", uuid.New().String()),
+			PreciseAmount: merchantNet,
+			Source: sourceBalance.BalanceID,
+			Destination: merchantBalance.BalanceID,
+			Status: "applied",
+			Description: "payment",
+			CreatedAt: time.Now(),
+		}
 
-	id := uuid.New().String()
-	ref := fmt.Sprintf("revenue_%s", id)
+		childTransaction := &store.Transaction{
+			ID: uuid.New(),
+			Reference: fmt.Sprintf("revenue_%s", uuid.New().String()),
+			ParentTransaction: parentTransaction.ID,
+			Source: sourceBalance.BalanceID,
+			Destination: revenueBalance.BalanceID,
+			PreciseAmount: platformFee,
+			Status: "applied",
+			Description: "platform revenue",
+			CreatedAt: time.Now(),
+		}
 
-	childTransaction := &store.Transaction {
-		ID: uuid.New(),
-		Reference: ref,
-		ParentTransaction: parentTransaction.ID,
-		Source: sourceBalance.BalanceID,
-		Destination: revenueBalance.BalanceID,
-		PreciseAmount: platformFee,
-		Status: "applied",
-		Description: "platform revenue",
-		CreatedAt: time.Now(),
-	}
-
-	// atomic operation
-	err = s.txManager.WithTx(ctx, func(ctx context.Context) error {
 		// record customer -> merchant transaction
 		if err := s.store.Transactions.Record(ctx, parentTransaction); err != nil {
-			return err
+			return fmt.Errorf("recording transaction: %w", err)
+		}
+
+		// record customer -> @Revenue transaction
+		if err := s.store.Transactions.Record(ctx, childTransaction); err != nil {
+			return fmt.Errorf("recording transaction: %w", err)
 		}
 
 		// update customer balances:
@@ -172,11 +161,6 @@ func (s *svc) Pay(ctx context.Context, payload PaymentDTO, user *store.User) err
 
 		// update merchant balance:
 		if err := s.store.Balances.UpdateBalance(ctx, merchantBalance); err != nil {
-			return err
-		}
-
-		// record customer -> @Revenue transaction
-		if err := s.store.Transactions.Record(ctx, childTransaction); err != nil {
 			return err
 		}
 

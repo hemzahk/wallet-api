@@ -61,7 +61,7 @@ type Storage struct {
 	}
 
 	WebhookEventIDs interface {
-		IsDuplicate(ctx context.Context, sourceID, eventID string) (bool, error)
+		MarkProcessed(ctx context.Context, sourceID, eventID string) (bool, error)
 	}
 
 	Roles interface {

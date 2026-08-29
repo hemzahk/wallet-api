@@ -5,10 +5,15 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"math/big"
 	"time"
 
 	"github.com/google/uuid"
+)
+
+var (
+	ErrCheckoutSessionNotFound = errors.New("checkout session not found or expired")
 )
 
 type CheckoutSession struct {
@@ -81,7 +86,12 @@ func (s *CheckoutSessionStore) GetByToken(ctx context.Context, token string) (*C
 		&session.CreatedAt, 
 	)
 	if err != nil {
-		return nil, err
+		switch err {
+		case  sql.ErrNoRows:
+			return nil, ErrCheckoutSessionNotFound
+		default:
+			return nil, err
+		}
 	}
 
 	amountAsBigInt := big.NewInt(rawAmount)

@@ -3,7 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
+
+	"github.com/hemzahk/wallet-api/internal/dbtx"
 )
 
 type WebhookEventID struct {
@@ -16,26 +19,30 @@ type WebhookEventIDStore struct {
 	db *sql.DB
 }
 
-func (s *WebhookEventIDStore) IsDuplicate(ctx context.Context, sourceID, eventID string) (bool, error) {
-    rows, err := s.db.ExecContext(ctx, `
-        INSERT INTO webhook_event_ids (event_id, source_id)
+func (s *WebhookEventIDStore) MarkProcessed(ctx context.Context, sourceID, eventID string) (bool, error) {
+    dbtx := dbtx.ExtractTx(ctx, s.db)
+
+	query := `
+		INSERT INTO webhook_event_ids (event_id, source_id)
         VALUES ($1, $2)
         ON CONFLICT (source_id, event_id) DO NOTHING
-    `, eventID, sourceID)
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
+
+	result, err := dbtx.ExecContext(ctx, query, eventID, sourceID)
     if err != nil {
-        return false, err
+        return false, fmt.Errorf("recording webhook event %s/%s: %w", sourceID, eventID, err)
     }
 
     // rowsAffected == 0 means the INSERT was a no-op (duplicate)
     // rowsAffected == 1 means it's a new event
-    // (check rows affected in your driver)
 
-	rowsAffected, err := rows.RowsAffected()
-	switch rowsAffected {
-		case 0:
-			return true, nil
-		default:
-			return false, nil
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("checking webhook insert result: %w", err)
 	}
 
+	return rowsAffected == 1, nil
 }

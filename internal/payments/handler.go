@@ -89,22 +89,29 @@ type PaymentDTO struct {
 }
 
 func (h *handler) Pay(w http.ResponseWriter, r *http.Request) {
-	var payload PaymentDTO
-	if err := json.ReadJSON(w, r, &payload); err != nil {
-		json.InternalServerError(w, r, err)
-		return
-	}
+	token := chi.URLParam(r, "token")
 
-	if err := json.Validate.Struct(payload); err != nil {
-		json.BadRequestResponse(w, r, err)
-		return
-	}
+	// var payload PaymentDTO
+	// if err := json.ReadJSON(w, r, &payload); err != nil {
+	// 	json.InternalServerError(w, r, err)
+	// 	return
+	// }
+
+	// if err := json.Validate.Struct(payload); err != nil {
+	// 	json.BadRequestResponse(w, r, err)
+	// 	return
+	// }
 
 	user := r.Context().Value("user").(*store.User)
 
-	if err := h.service.Pay(r.Context(), payload, user); err != nil {
-		json.InternalServerError(w, r, err)
-		return
+	if err := h.service.Pay(r.Context(), token, user); err != nil {
+		switch err{
+		case store.ErrCheckoutSessionNotFound:
+			json.NotFoundResponse(w,r,err)
+		default:
+			json.InternalServerError(w, r, err)
+		}
+		return		
 	}
 
 	if err := json.JsonResponse(w, http.StatusOK, "success"); err != nil {
