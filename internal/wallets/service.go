@@ -80,9 +80,16 @@ func (s *svc) Topup(ctx context.Context, payload TopupDTO, user *store.User) (*g
 		CreatedAt: time.Now(),
 	}
 
+	// credit the customer's wallet (inflight_credit_balance)
+	destinationBalance.InflightCreditBalance.Add(destinationBalance.InflightCreditBalance, amount)
+
 	// record transaction
 	if err := s.store.Transactions.Record(ctx, transaction); err != nil {
 			return nil, err
+	}
+
+	if err := s.store.Balances.UpdateBalance(ctx, destinationBalance); err != nil {
+		return nil, err
 	}
 
 	return &session, nil
@@ -107,6 +114,13 @@ func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
 
 	// payment gateway failure
 	if payload.Status == "failed" {
+		destinationBalance, err := s.store.Balances.GetByBalanceID(ctx, parentTransaction.Destination)
+		if err != nil {
+			return err
+		}
+
+		destinationBalance.InflightCreditBalance.Sub(destinationBalance.InflightCreditBalance, parentTransaction.PreciseAmount)
+
 		childTransaction := &store.Transaction{
 			ID: uuid.New(),
 			ParentTransaction: parentTransaction.ID,
@@ -114,12 +128,16 @@ func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
 			Reference: fmt.Sprintf("topup_%s", uuid.New().String()),
 			Source: parentTransaction.Source,
 			Destination: parentTransaction.Destination,
-			Status: "rejected",
+			Status: "void",
 			Description: parentTransaction.Description,
 			CreatedAt: time.Now(),
 		}
 
 		if err := s.store.Transactions.Record(ctx, childTransaction); err != nil {
+			return err
+		}
+
+		if err := s.store.Balances.UpdateBalance(ctx, destinationBalance); err != nil {
 			return err
 		}
 
@@ -159,6 +177,7 @@ func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
 
 		// update customer's balance: 
 		balance.Balance.Add(balance.Balance, parentTransaction.PreciseAmount)
+		balance.InflightCreditBalance.Sub(balance.InflightCreditBalance, parentTransaction.PreciseAmount)
 		if err := s.store.Balances.UpdateBalance(ctx, balance); err != nil {
 			return err
 		}
