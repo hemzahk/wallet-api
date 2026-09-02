@@ -282,5 +282,7 @@ func (s *BalanceStore) UpdateBalance(ctx context.Context, balance *Balance) erro
 		return err
 	}
 
+	balance.Version = int(newVersion)
+
 	return nil
 }

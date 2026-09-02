@@ -26,63 +26,6 @@ type TransactionStore struct {
 	db *sql.DB
 }
 
-func (s *TransactionStore) recordTransaction(ctx context.Context, transaction *Transaction) error {
-	query := `
-		INSERT INTO transactions (
-			id,
-			reference,
-			precise_amount,
-			source,
-			destination,
-			status,
-			description,
-			created_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`
-
-	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
-	defer cancel()
-
-	transaction.Reference = generateUUIDWithSuffix("txn")
-
-	_, err := s.db.ExecContext(
-		ctx,
-		query,
-		transaction.ID,
-		transaction.Reference,
-		transaction.PreciseAmount.Int64(),
-		transaction.Source,
-		transaction.Destination,
-		transaction.Status,
-		transaction.Description,
-		transaction.CreatedAt,
-	)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// func (s *TransactionStore) RecordTransactionAndUpdateBalance(ctx context.Context, transaction *Transaction, sourceBalance, destinationBalance *Balance) error {
-// 	return withTx(s.db, ctx, func(tx *sql.Tx) error {
-// 		if err := s.record(ctx, tx, transaction); err != nil {
-// 			return err
-// 		}
-
-// 		if err := s.updateBalance(ctx, tx, sourceBalance); err != nil {
-// 			return err
-// 		}
-
-// 		if err := s.updateBalance(ctx, tx, destinationBalance); err != nil {
-// 			return err
-// 		}
-
-// 		return nil
-// 	})
-// }
-
 func (s *TransactionStore) Record(ctx context.Context, transaction *Transaction) error {
 	dbtx := dbtx.ExtractTx(ctx, s.db)
 
@@ -128,7 +71,7 @@ func (s *TransactionStore) Record(ctx context.Context, transaction *Transaction)
 
 func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Transaction, error) {
 	query := `
-		SELECT id, precise_amount, reference, source, destination, status, description, created_at
+		SELECT id, parent_transaction, reference, precise_amount, source, destination, status, description, created_at
 		FROM transactions
 		WHERE reference = $1
 	`
@@ -140,8 +83,9 @@ func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Tra
 	var rawAmount int64
 	err := s.db.QueryRowContext(ctx, query, reference).Scan(
 		&transaction.ID,
-		&rawAmount,
+		&transaction.ParentTransaction,
 		&transaction.Reference,
+		&rawAmount,
 		&transaction.Source,
 		&transaction.Destination,
 		&transaction.Status,
@@ -160,7 +104,7 @@ func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Tra
 
 func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error) {
 	query := `
-		SELECT t.precise_amount, t.description, t.created_at, t.source, t.destination
+		SELECT t.id, t.parent_transaction, t.reference, t.precise_amount, t.source, t.destination, t.status, t.description, t.created_at
 		FROM transactions t
 		JOIN balances b ON (b.balance_id = t."source" OR b.balance_id = t.destination)
 		WHERE b.identity_id = $1 AND t.destination <> '@Revenue' AND status <> 'inflight'
@@ -179,7 +123,17 @@ func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.
 	for rows.Next() {
 		var t Transaction
 		var rawAmount int64
-		if err := rows.Scan(&rawAmount, &t.Description, &t.CreatedAt, &t.Source, &t.Destination); err != nil {
+		if err := rows.Scan(
+			&t.ID,
+			&t.ParentTransaction,
+			&t.Reference,
+			&rawAmount,
+			&t.Source, 
+			&t.Destination,
+			&t.Status,
+			&t.Description, 
+			&t.CreatedAt, 
+			); err != nil {
 			return nil, err
 		}
 		amountAsBigInt := big.NewInt(rawAmount)
