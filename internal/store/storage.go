@@ -9,7 +9,24 @@ import (
 	"github.com/google/uuid"
 )
 
+type TransactionsStore interface {
+	Record(ctx context.Context, transaction *Transaction) error
+	GetByRef(ctx context.Context, reference string) (*Transaction, error)
+	GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error)
+}
+
+type BalancesStore interface {
+	CreateBalance(ctx context.Context, balance *Balance) error
+	GetByIdentityID(ctx context.Context, identityID uuid.UUID) (*Balance, error)
+	GetByEmail(ctx context.Context, email string) (*Balance, error)
+	GetByUserID(ctx context.Context, userID uuid.UUID) (*Balance, error)
+	GetByBalanceID(ctx context.Context, balanceID string) (*Balance, error)
+	GetByMerchantID(ctx context.Context, merchantID uuid.UUID) (*Balance, error)
+	UpdateBalance(ctx context.Context, balance *Balance) error
+}
+
 type Storage struct {
+	Transactions TransactionsStore
 	Users interface {
 		Create(ctx context.Context, user *User) error
 		GetByEmail(ctx context.Context, email string) (*User, error)
@@ -27,23 +44,7 @@ type Storage struct {
 		Delete(ctx context.Context, identityID uuid.UUID) error
 	}
 
-	Transactions interface {
-		//RecordTransaction(ctx context.Context, transaction *Transaction) error
-		Record(ctx context.Context, transaction *Transaction) error
-		GetByRef(ctx context.Context, reference string) (*Transaction, error)
-		GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error)
-		// RecordTransactionAndUpdateBalance(ctx context.Context, transaction *Transaction, sourceBalance, destinationBalance *Balance) error
-	}
-
-	Balances interface {
-		CreateBalance(ctx context.Context, balance *Balance) error
-		GetByIdentityID(ctx context.Context, identityID uuid.UUID) (*Balance, error)
-		GetByEmail(ctx context.Context, email string) (*Balance, error)
-		GetByUserID(ctx context.Context, userID uuid.UUID) (*Balance, error)
-		GetByBalanceID(ctx context.Context, balanceID string) (*Balance, error)
-		GetByMerchantID(ctx context.Context, merchantID uuid.UUID) (*Balance, error)
-		UpdateBalance(ctx context.Context, balance *Balance) error
-	}
+	Balances BalancesStore
 
 	Merchants interface {
 		Create(ctx context.Context, merchant *Merchant) error

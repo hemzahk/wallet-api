@@ -73,11 +73,7 @@ func TestGetByToken_Success(t *testing.T) {
 	WithArgs(hashToken, time.Now()).
 	WillReturnRows(rows)
 
-	_, err = s.GetByToken(ctx, plainToken)
+	session, err := s.GetByToken(ctx, plainToken)
 	assert.NoError(t, err)
-
-
-
-
-
+	assert.Equal(t, big.NewInt(100000), session.Amount)
 }

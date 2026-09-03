@@ -105,7 +105,7 @@ func main() {
 		cfg.auth.token.iss,
 	)
 
-	gateway := gateway.NewMockGateway(cfg.gateway.webhookSecret, cfg.gateway.baseURL)
+	gateway := gateway.NewStubGateway(cfg.gateway.webhookSecret, cfg.gateway.baseURL)
 
 	app := &application{
 		config: cfg,
