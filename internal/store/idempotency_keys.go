@@ -13,6 +13,11 @@ var (
 	ErrKeyNotFound = errors.New("idempotency key not found")
 )
 
+type IdempotencyKeys interface {
+		Create(ctx context.Context, record IdempotencyKey)  error
+		Get(ctx context.Context, key string, userID uuid.UUID) (*IdempotencyKey, error)
+}
+
 type IdempotencyKey struct {
 	Key          string    `json:"key"`
 	UserID       uuid.UUID `json:"user_id"`

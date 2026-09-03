@@ -48,14 +48,22 @@ type Service interface {
 }
 
 type svc struct {
-	store store.Storage
+	transactions store.Transactions
+	balances store.Balances
+	webhookEventIDs store.WebhookEventIDs
 	txManager dbtx.TxManager
 	gateway gateway.PaymentGateway
 }
 
-func NewService(store store.Storage, txManager dbtx.TxManager, gateway gateway.PaymentGateway) Service {
+func NewService(transactions store.Transactions,
+				balances store.Balances,
+				webhookEventIDs store.WebhookEventIDs,
+	 			txManager dbtx.TxManager, 
+				gateway gateway.PaymentGateway) Service {
 	return &svc{
-		store: store,
+		transactions: transactions,
+		balances: balances,
+		webhookEventIDs: webhookEventIDs,
 		txManager: txManager,
 		gateway: gateway,
 	}
@@ -76,12 +84,12 @@ func (s *svc) Topup(ctx context.Context, payload TopupDTO, user *store.User) (*g
 	ref := fmt.Sprintf("topup_%s", session.GatewayRef)
 
 	err = s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		destinationBalance, err := s.store.Balances.GetByIdentityID(ctx, user.IdentityID)
+		destinationBalance, err := s.balances.GetByIdentityID(ctx, user.IdentityID)
 		if err != nil {
 			return fmt.Errorf("fetching destination balance: %w", err)
 		}
 
-		sourceBalance, err := s.store.Balances.GetByBalanceID(ctx, "@World")
+		sourceBalance, err := s.balances.GetByBalanceID(ctx, "@World")
 		if err != nil {
 			return fmt.Errorf("fetching source balance: %w", err)
 		}
@@ -97,13 +105,13 @@ func (s *svc) Topup(ctx context.Context, payload TopupDTO, user *store.User) (*g
 			CreatedAt: time.Now(),
 		}
 
-		if err := s.store.Transactions.Record(ctx, transaction); err != nil {
+		if err := s.transactions.Record(ctx, transaction); err != nil {
 			return fmt.Errorf("recording transaction: %w", err)
 		}
 
 		destinationBalance.InflightCreditBalance.Add(destinationBalance.InflightCreditBalance, amount)
 
-		if err := s.store.Balances.UpdateBalance(ctx, destinationBalance); err != nil {
+		if err := s.balances.UpdateBalance(ctx, destinationBalance); err != nil {
 			return err
 		}
 
@@ -119,7 +127,7 @@ func (s *svc) Topup(ctx context.Context, payload TopupDTO, user *store.User) (*g
 func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
 	ref := fmt.Sprintf("topup_%s", payload.GatewayRef)
 
-	parentTransaction, err := s.store.Transactions.GetByRef(ctx, ref)
+	parentTransaction, err := s.transactions.GetByRef(ctx, ref)
 	if err != nil {
 		return fmt.Errorf("fetching parent transaction: %w", err)
 	}
@@ -142,7 +150,7 @@ func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
 	}
 	
 	err = s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		isNew, err := s.store.WebhookEventIDs.MarkProcessed(ctx, payload.SourceID, payload.EventID)
+		isNew, err := s.webhookEventIDs.MarkProcessed(ctx, payload.SourceID, payload.EventID)
 		if err != nil {
 			return err
 		}
@@ -151,7 +159,7 @@ func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
 			return ErrWebhookAlreadyProcessed
 		}
 		
-		destinationBalance, err := s.store.Balances.GetByBalanceID(ctx, parentTransaction.Destination)
+		destinationBalance, err := s.balances.GetByBalanceID(ctx, parentTransaction.Destination)
 		if err != nil {
 			return fmt.Errorf("fetching destination balance: %w", err)
 		}
@@ -168,7 +176,7 @@ func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
 			CreatedAt: time.Now(),
 		}
 
-		if err := s.store.Transactions.Record(ctx, childTransaction); err != nil {
+		if err := s.transactions.Record(ctx, childTransaction); err != nil {
 			return fmt.Errorf("recording transaction: %w", err)
 		}
 
@@ -177,7 +185,7 @@ func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
 			destinationBalance.Balance.Add(destinationBalance.Balance, parentTransaction.PreciseAmount)
 		}
 
-		if err := s.store.Balances.UpdateBalance(ctx, destinationBalance); err != nil {
+		if err := s.balances.UpdateBalance(ctx, destinationBalance); err != nil {
 			return err 
 		}
 
@@ -217,12 +225,12 @@ func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.U
 	ref := fmt.Sprintf("withdrawal_%s", session.GatewayRef)
 
 	err = s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		sourceBalance, err := s.store.Balances.GetByIdentityID(ctx, user.IdentityID)
+		sourceBalance, err := s.balances.GetByIdentityID(ctx, user.IdentityID)
 		if err != nil {
 			return fmt.Errorf("fetching source balance: %w", err)
 		}
 
-		destinationBalance, err := s.store.Balances.GetByBalanceID(ctx, "@World")
+		destinationBalance, err := s.balances.GetByBalanceID(ctx, "@World")
 		if err != nil {
 			return fmt.Errorf("fetching destination balance: %w", err)
 		}
@@ -243,7 +251,7 @@ func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.U
 			CreatedAt: time.Now(),
 		}
 
-		if err := s.store.Transactions.Record(ctx, transaction); err != nil {
+		if err := s.transactions.Record(ctx, transaction); err != nil {
 			return fmt.Errorf("recording transaction: %w", err)
 		}
 
@@ -251,7 +259,7 @@ func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.U
 		sourceBalance.Balance.Sub(sourceBalance.Balance, amount)
 		sourceBalance.InflightDebitBalance.Add(sourceBalance.InflightDebitBalance, amount)
 
-		if err := s.store.Balances.UpdateBalance(ctx, sourceBalance); err != nil {
+		if err := s.balances.UpdateBalance(ctx, sourceBalance); err != nil {
 			return err
 		}
 
@@ -266,7 +274,7 @@ func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.U
 
 func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error {
 	ref := fmt.Sprintf("withdrawal_%s", payload.GatewayRef)
-	parentTransaction, err := s.store.Transactions.GetByRef(ctx, ref)
+	parentTransaction, err := s.transactions.GetByRef(ctx, ref)
 	if err != nil {
 		return fmt.Errorf("fetching transaction: %w", err)
 	}
@@ -289,7 +297,7 @@ func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 	}
 
 	err = s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		isNew, err := s.store.WebhookEventIDs.MarkProcessed(ctx, payload.SourceID, payload.EventID)
+		isNew, err := s.webhookEventIDs.MarkProcessed(ctx, payload.SourceID, payload.EventID)
 		if err != nil {
 			return err
 		}
@@ -298,7 +306,7 @@ func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 			return ErrWebhookAlreadyProcessed
 		}
 
-		sourceBalance, err := s.store.Balances.GetByBalanceID(ctx, parentTransaction.Source)
+		sourceBalance, err := s.balances.GetByBalanceID(ctx, parentTransaction.Source)
 		if err != nil {
 			return fmt.Errorf("fetching source balance: %w", err)
 		}
@@ -315,7 +323,7 @@ func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 			CreatedAt: time.Now(),
 		}
 
-		if err := s.store.Transactions.Record(ctx, childTransaction); err != nil {
+		if err := s.transactions.Record(ctx, childTransaction); err != nil {
 			return fmt.Errorf("recording transaction: %w", err)
 		}
 
@@ -324,7 +332,7 @@ func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 			sourceBalance.Balance.Add(sourceBalance.Balance, parentTransaction.PreciseAmount)
 		}
 
-		if err := s.store.Balances.UpdateBalance(ctx, sourceBalance); err != nil {
+		if err := s.balances.UpdateBalance(ctx, sourceBalance); err != nil {
 			return err
 		}
 
@@ -357,7 +365,7 @@ func (s *svc) Transfer(ctx context.Context, payload TransferDTO, user *store.Use
 	}
 
 	err = s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		sourceBalance, err := s.store.Balances.GetByIdentityID(ctx, user.IdentityID)
+		sourceBalance, err := s.balances.GetByIdentityID(ctx, user.IdentityID)
 		if err != nil {
 			return fmt.Errorf("fetching source balance: %w", err)
 		}
@@ -367,7 +375,7 @@ func (s *svc) Transfer(ctx context.Context, payload TransferDTO, user *store.Use
 			return  ErrInsufficientBalance
 		}
 
-		destinationBalance, err := s.store.Balances.GetByEmail(ctx, payload.Email)
+		destinationBalance, err := s.balances.GetByEmail(ctx, payload.Email)
 		if err != nil {
 			return fmt.Errorf("fetching destination balance: %w", err)
 		}
@@ -396,15 +404,15 @@ func (s *svc) Transfer(ctx context.Context, payload TransferDTO, user *store.Use
 			CreatedAt: time.Now(),
 		}
 
-		if err := s.store.Transactions.Record(ctx, transaction); err != nil {
+		if err := s.transactions.Record(ctx, transaction); err != nil {
 			return fmt.Errorf("recording transaction: %w", err)
 		}
 
-		if err := s.store.Balances.UpdateBalance(ctx, sourceBalance); err != nil {
+		if err := s.balances.UpdateBalance(ctx, sourceBalance); err != nil {
 			return err
 		}
 
-		if err := s.store.Balances.UpdateBalance(ctx, destinationBalance); err != nil {
+		if err := s.balances.UpdateBalance(ctx, destinationBalance); err != nil {
 			return err
 		}
 
@@ -418,7 +426,7 @@ func (s *svc) Transfer(ctx context.Context, payload TransferDTO, user *store.Use
 }
 
 func (s *svc) GetWallet(ctx context.Context, userID uuid.UUID) (*big.Float, error) {
-	balance, err := s.store.Balances.GetByUserID(ctx, userID); 
+	balance, err := s.balances.GetByUserID(ctx, userID); 
 	if err != nil {
 		return nil, err
 	}
@@ -429,12 +437,12 @@ func (s *svc) GetWallet(ctx context.Context, userID uuid.UUID) (*big.Float, erro
 }
 
 func (s *svc) GetTransactionHistory(ctx context.Context, identityID uuid.UUID) (*store.Balance, []store.Transaction, error) {
-	balance, err := s.store.Balances.GetByIdentityID(ctx, identityID)
+	balance, err := s.balances.GetByIdentityID(ctx, identityID)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	transactions, err := s.store.Transactions.GetByIdentityID(ctx, identityID)
+	transactions, err := s.transactions.GetByIdentityID(ctx, identityID)
 	if err != nil {
 		return nil, nil, err
 	}

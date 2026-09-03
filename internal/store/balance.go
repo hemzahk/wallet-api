@@ -15,6 +15,16 @@ var (
 	ErrOptimisticLock = errors.New("balance: version conflict or balance not found")
 )
 
+type Balances interface {
+	CreateBalance(ctx context.Context, balance *Balance) error
+	GetByIdentityID(ctx context.Context, identityID uuid.UUID) (*Balance, error)
+	GetByEmail(ctx context.Context, email string) (*Balance, error)
+	GetByUserID(ctx context.Context, userID uuid.UUID) (*Balance, error)
+	GetByBalanceID(ctx context.Context, balanceID string) (*Balance, error)
+	GetByMerchantID(ctx context.Context, merchantID uuid.UUID) (*Balance, error)
+	UpdateBalance(ctx context.Context, balance *Balance) error
+}
+
 type Balance struct {
 	ID uuid.UUID `json:"-"`
 	BalanceID string `json:"balance_id"`

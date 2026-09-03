@@ -10,6 +10,12 @@ import (
 	"github.com/hemzahk/wallet-api/internal/dbtx"
 )
 
+type Transactions interface {
+	Record(ctx context.Context, transaction *Transaction) error
+	GetByRef(ctx context.Context, reference string) (*Transaction, error)
+	GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error)
+}
+
 type Transaction struct {
 	ID uuid.UUID `json:"id"`
 	ParentTransaction uuid.UUID `json:"parent_transaction"`

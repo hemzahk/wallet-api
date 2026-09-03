@@ -9,6 +9,10 @@ import (
 	"github.com/hemzahk/wallet-api/internal/dbtx"
 )
 
+type WebhookEventIDs interface {
+	MarkProcessed(ctx context.Context, sourceID, eventID string) (bool, error)
+}
+
 type WebhookEventID struct {
 	EventID  string `json:"event_id"`
 	SourceID string `json:"source_id"` // for our PSP 645b44fb-314f-4e34-8106-17b09cc9660a

@@ -12,6 +12,18 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+type Users interface {
+	Create(ctx context.Context, user *User) error
+	GetByEmail(ctx context.Context, email string) (*User, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
+	Update(ctx  context.Context, user *User) error
+	Delete(ctx context.Context, userID uuid.UUID) error
+	
+	CreateUserInvitation(ctx context.Context, token string, userID uuid.UUID, exp time.Duration) error
+	GetUserFromInvitation(ctx context.Context, token string) (*User, error)
+	DeleteUserInvitation(ctx context.Context, userID uuid.UUID) error
+}
+
 type User struct {
 	ID uuid.UUID `json:"id"`
 	Email string `json:"email"`

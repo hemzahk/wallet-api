@@ -26,13 +26,23 @@ type Service interface {
 }
 
 type svc struct {
-	store store.Storage
+	checkoutSessions store.CheckoutSessions
+	merchants store.Merchants
+	transactions store.Transactions
+	balances store.Balances
 	txManager dbtx.TxManager
 }
 
-func NewService(store store.Storage, txManager dbtx.TxManager) Service {
+func NewService(checkoutSessions store.CheckoutSessions,
+				merchants store.Merchants,
+				transactions store.Transactions,
+				balances store.Balances,
+				txManager dbtx.TxManager) Service{
 	return &svc{
-		store: store,
+		checkoutSessions: checkoutSessions,
+		merchants: merchants,
+		transactions :transactions,
+		balances: balances,
 		txManager: txManager,
 	}
 }
@@ -43,7 +53,7 @@ func (s *svc) CreateCheckoutSession(ctx context.Context, payload CheckoutSession
 		return "", err
 	}
 
-	merchant, err := s.store.Merchants.GetByUserID(ctx, user.ID)
+	merchant, err := s.merchants.GetByUserID(ctx, user.ID)
 	if err != nil {
 		return "", err
 	}
@@ -62,7 +72,7 @@ func (s *svc) CreateCheckoutSession(ctx context.Context, payload CheckoutSession
 		CreatedAt: time.Now(),
 	}
 
-	if err := s.store.CheckoutSessions.Create(ctx, session); err != nil {
+	if err := s.checkoutSessions.Create(ctx, session); err != nil {
 		return "", err
 	}
 
@@ -70,7 +80,7 @@ func (s *svc) CreateCheckoutSession(ctx context.Context, payload CheckoutSession
 }
 
 func (s *svc) GetCheckoutSession(ctx context.Context, token string) (*store.CheckoutSession, error) {
-	session, err := s.store.CheckoutSessions.GetByToken(ctx, token)
+	session, err := s.checkoutSessions.GetByToken(ctx, token)
 	if err != nil {
 		return nil, err
 	}
@@ -80,12 +90,12 @@ func (s *svc) GetCheckoutSession(ctx context.Context, token string) (*store.Chec
 
 func (s *svc) Pay(ctx context.Context, token string, user *store.User) error {
 	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		session, err := s.store.CheckoutSessions.GetByToken(ctx, token)
+		session, err := s.checkoutSessions.GetByToken(ctx, token)
 		if err != nil {
 			return err
 		}
 
-		sourceBalance, err := s.store.Balances.GetByUserID(ctx, user.ID)
+		sourceBalance, err := s.balances.GetByUserID(ctx, user.ID)
 		if err != nil {
 			return fmt.Errorf("fetching balance: %w", err)
 		}
@@ -95,13 +105,13 @@ func (s *svc) Pay(ctx context.Context, token string, user *store.User) error {
 			return ErrInsufficientBalance
 		}
 
-		merchantBalance, err := s.store.Balances.GetByMerchantID(ctx, session.MerchantID)
+		merchantBalance, err := s.balances.GetByMerchantID(ctx, session.MerchantID)
 		if err != nil {
 			return fmt.Errorf("fetching balance: %w", err)
 		}
 
 		// @Revenue
-		revenueBalance, err := s.store.Balances.GetByBalanceID(ctx, "@Revenue")
+		revenueBalance, err := s.balances.GetByBalanceID(ctx, "@Revenue")
 		if err != nil {
 			return fmt.Errorf("fetching balance: %w", err)
 		}
@@ -145,27 +155,27 @@ func (s *svc) Pay(ctx context.Context, token string, user *store.User) error {
 		}
 
 		// record customer -> merchant transaction
-		if err := s.store.Transactions.Record(ctx, parentTransaction); err != nil {
+		if err := s.transactions.Record(ctx, parentTransaction); err != nil {
 			return fmt.Errorf("recording transaction: %w", err)
 		}
 
 		// record customer -> @Revenue transaction
-		if err := s.store.Transactions.Record(ctx, childTransaction); err != nil {
+		if err := s.transactions.Record(ctx, childTransaction); err != nil {
 			return fmt.Errorf("recording transaction: %w", err)
 		}
 
 		// update customer balances:
-		if err := s.store.Balances.UpdateBalance(ctx, sourceBalance); err != nil {
+		if err := s.balances.UpdateBalance(ctx, sourceBalance); err != nil {
 			return err
 		}
 
 		// update merchant balance:
-		if err := s.store.Balances.UpdateBalance(ctx, merchantBalance); err != nil {
+		if err := s.balances.UpdateBalance(ctx, merchantBalance); err != nil {
 			return err
 		}
 
 		// update @Revenue balance
-		if err := s.store.Balances.UpdateBalance(ctx, revenueBalance); err != nil {
+		if err := s.balances.UpdateBalance(ctx, revenueBalance); err != nil {
 			return err
 		}
 

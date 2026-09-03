@@ -37,24 +37,35 @@ type Service interface {
 }
 
 type svc struct {
-	store store.Storage
+	users store.Users
+	identities store.Identities
+	balances store.Balances
+	merchants store.Merchants
 	txManager dbtx.TxManager
 	mailer mailer.Client
 	auth auth.Authenticator
 	logger *zap.SugaredLogger
 }
 
-func NewService(store store.Storage, txManager dbtx.TxManager, mailer mailer.Client, auth auth.Authenticator, logger *zap.SugaredLogger) Service {
+func NewService(users store.Users,
+				identities store.Identities,
+				balances store.Balances,
+				merchants store.Merchants,
+				txManager dbtx.TxManager,
+				mailer mailer.Client, 
+				auth auth.Authenticator, 
+				logger *zap.SugaredLogger) Service {
 	return &svc{
-		store: store,
+		users: users,
+		identities: identities,
+		balances: balances,
+		merchants: merchants,
 		txManager: txManager,
 		mailer: mailer,
 		auth: auth,
 		logger : logger,
 	}
 }
-
-
 
 func (s *svc) Register(ctx context.Context, payload RegisterDTO) (string, error) {
 	user := &store.User{
@@ -92,15 +103,15 @@ func (s *svc) Register(ctx context.Context, payload RegisterDTO) (string, error)
 
 
 	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		if err := s.store.Identities.Create(ctx, identity); err != nil {
+		if err := s.identities.Create(ctx, identity); err != nil {
 			return err
 		}
 
-		if err := s.store.Users.Create(ctx, user); err != nil {
+		if err := s.users.Create(ctx, user); err != nil {
 			return err
 		}
 
-		if err := s.store.Users.CreateUserInvitation(ctx, hashToken, user.ID, time.Hour * 24 * 3); err != nil {
+		if err := s.users.CreateUserInvitation(ctx, hashToken, user.ID, time.Hour * 24 * 3); err != nil {
 			return err
 		}
 
@@ -126,15 +137,15 @@ func (s *svc) Register(ctx context.Context, payload RegisterDTO) (string, error)
 		
 		// delete user
 		err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
-			if err := s.store.Users.Delete(ctx, user.ID); err != nil {
+			if err := s.users.Delete(ctx, user.ID); err != nil {
 				return err
 			}
 
-			if err := s.store.Users.DeleteUserInvitation(ctx, user.ID); err != nil {
+			if err := s.users.DeleteUserInvitation(ctx, user.ID); err != nil {
 				return err
 			}
 
-			if err := s.store.Identities.Delete(ctx, user.IdentityID); err != nil {
+			if err := s.identities.Delete(ctx, user.IdentityID); err != nil {
 				return err
 			}
 
@@ -155,13 +166,13 @@ func (s *svc) Register(ctx context.Context, payload RegisterDTO) (string, error)
 
 func (s *svc) Activate(ctx context.Context, token string) error {
 	return s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		user, err := s.store.Users.GetUserFromInvitation(ctx, token) 
+		user, err := s.users.GetUserFromInvitation(ctx, token) 
 		if err != nil {
 			return err
 		}
 
 		user.IsActive = true
-		if err := s.store.Users.Update(ctx, user); err != nil {
+		if err := s.users.Update(ctx, user); err != nil {
 			return err
 		}
 
@@ -172,11 +183,11 @@ func (s *svc) Activate(ctx context.Context, token string) error {
 			LedgerID: "customer_ledger_id",
 			CreatedAt: time.Now(),
 		}
-		if err := s.store.Balances.CreateBalance(ctx, balance); err != nil {
+		if err := s.balances.CreateBalance(ctx, balance); err != nil {
 			return err
 		}
 
-		if err := s.store.Users.DeleteUserInvitation(ctx, user.ID); err != nil {
+		if err := s.users.DeleteUserInvitation(ctx, user.ID); err != nil {
 			return err
 		}
 
@@ -228,19 +239,19 @@ func (s *svc) RegisterMerchant(ctx context.Context, payload RegisterMerchantDTO)
 
 
 	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		if err := s.store.Identities.Create(ctx, identity); err != nil {
+		if err := s.identities.Create(ctx, identity); err != nil {
 			return err
 		}
 
-		if err := s.store.Users.Create(ctx, user); err != nil {
+		if err := s.users.Create(ctx, user); err != nil {
 			return err
 		}
 
-		if err := s.store.Users.CreateUserInvitation(ctx, hashToken, user.ID, time.Hour * 24 * 3); err != nil {
+		if err := s.users.CreateUserInvitation(ctx, hashToken, user.ID, time.Hour * 24 * 3); err != nil {
 			return err
 		}
 
-		if err := s.store.Merchants.Create(ctx, merchant); err != nil {
+		if err := s.merchants.Create(ctx, merchant); err != nil {
 			return err
 		}
 
@@ -266,15 +277,15 @@ func (s *svc) RegisterMerchant(ctx context.Context, payload RegisterMerchantDTO)
 		
 		// delete user
 		err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
-			if err := s.store.Users.Delete(ctx, user.ID); err != nil {
+			if err := s.users.Delete(ctx, user.ID); err != nil {
 				return err
 			}
 
-			if err := s.store.Users.DeleteUserInvitation(ctx, user.ID); err != nil {
+			if err := s.users.DeleteUserInvitation(ctx, user.ID); err != nil {
 				return err
 			}
 
-			if err := s.store.Identities.Delete(ctx, user.IdentityID); err != nil {
+			if err := s.identities.Delete(ctx, user.IdentityID); err != nil {
 				return err
 			}
 
@@ -295,13 +306,13 @@ func (s *svc) RegisterMerchant(ctx context.Context, payload RegisterMerchantDTO)
 
 func (s *svc) ActivateMerchant(ctx context.Context, token string) error {
 	return s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		user, err := s.store.Users.GetUserFromInvitation(ctx, token) 
+		user, err := s.users.GetUserFromInvitation(ctx, token) 
 		if err != nil {
 			return err
 		}
 
 		user.IsActive = true
-		if err := s.store.Users.Update(ctx, user); err != nil {
+		if err := s.users.Update(ctx, user); err != nil {
 			return err
 		}
 
@@ -312,11 +323,11 @@ func (s *svc) ActivateMerchant(ctx context.Context, token string) error {
 			LedgerID: "merchant_ledger_id",
 			CreatedAt: time.Now(),
 		}
-		if err := s.store.Balances.CreateBalance(ctx, balance); err != nil {
+		if err := s.balances.CreateBalance(ctx, balance); err != nil {
 			return err
 		}
 
-		if err := s.store.Users.DeleteUserInvitation(ctx, user.ID); err != nil {
+		if err := s.users.DeleteUserInvitation(ctx, user.ID); err != nil {
 			return err
 		}
 
@@ -325,7 +336,7 @@ func (s *svc) ActivateMerchant(ctx context.Context, token string) error {
 }
 
 func (s *svc) CreateToken(ctx context.Context, payload CreateUserTokenPayload) (string, error) {
-	user, err := s.store.Users.GetByEmail(ctx, payload.Email)
+	user, err := s.users.GetByEmail(ctx, payload.Email)
 	if err != nil {
 		return "", ErrUnauthorized // add some proper error handling
 	}

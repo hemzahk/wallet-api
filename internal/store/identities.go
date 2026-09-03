@@ -15,6 +15,12 @@ const (
 	CategoryCustomer = "customer"
 	CategoryMerchant = "merchant"
 )
+
+type Identities interface {
+		Create(ctx context.Context, identity *Identity) error
+		Delete(ctx context.Context, identityID uuid.UUID) error
+}
+
 type Identity struct {
 	ID uuid.UUID `json:"id"`
 	FirstName string `json:"first_name"`

@@ -1,73 +1,19 @@
 package store
 
 import (
-	"context"
 	"database/sql"
-	"fmt"
-	"time"
-
-	"github.com/google/uuid"
 )
 
-type TransactionsStore interface {
-	Record(ctx context.Context, transaction *Transaction) error
-	GetByRef(ctx context.Context, reference string) (*Transaction, error)
-	GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error)
-}
-
-type BalancesStore interface {
-	CreateBalance(ctx context.Context, balance *Balance) error
-	GetByIdentityID(ctx context.Context, identityID uuid.UUID) (*Balance, error)
-	GetByEmail(ctx context.Context, email string) (*Balance, error)
-	GetByUserID(ctx context.Context, userID uuid.UUID) (*Balance, error)
-	GetByBalanceID(ctx context.Context, balanceID string) (*Balance, error)
-	GetByMerchantID(ctx context.Context, merchantID uuid.UUID) (*Balance, error)
-	UpdateBalance(ctx context.Context, balance *Balance) error
-}
-
 type Storage struct {
-	Transactions TransactionsStore
-	Users interface {
-		Create(ctx context.Context, user *User) error
-		GetByEmail(ctx context.Context, email string) (*User, error)
-		GetByID(ctx context.Context, id uuid.UUID) (*User, error)
-		Update(ctx  context.Context, user *User) error
-		Delete(ctx context.Context, userID uuid.UUID) error
-		
-		CreateUserInvitation(ctx context.Context, token string, userID uuid.UUID, exp time.Duration) error
-		GetUserFromInvitation(ctx context.Context, token string) (*User, error)
-		DeleteUserInvitation(ctx context.Context, userID uuid.UUID) error
-	}
-
-	Identities interface {
-		Create(ctx context.Context, identity *Identity) error
-		Delete(ctx context.Context, identityID uuid.UUID) error
-	}
-
-	Balances BalancesStore
-
-	Merchants interface {
-		Create(ctx context.Context, merchant *Merchant) error
-		GetByUserID(ctx context.Context, userID uuid.UUID) (*Merchant, error)
-	}
-
-	CheckoutSessions interface {
-		Create(ctx context.Context, session *CheckoutSession) error
-		GetByToken(ctx context.Context, token string) (*CheckoutSession, error)
-	}
-
-	IdempotencyKeys interface {
-		Create(ctx context.Context, record IdempotencyKey)  error
-		Get(ctx context.Context, key string, userID uuid.UUID) (*IdempotencyKey, error)
-	}
-
-	WebhookEventIDs interface {
-		MarkProcessed(ctx context.Context, sourceID, eventID string) (bool, error)
-	}
-
-	Roles interface {
-		GetByName(ctx context.Context, roleName string) (*Role, error)
-	}
+	Users Users
+	Roles Roles
+	Identities Identities
+	Balances Balances
+	Transactions Transactions
+	Merchants Merchants
+	CheckoutSessions CheckoutSessions
+	IdempotencyKeys IdempotencyKeys
+	WebhookEventIDs WebhookEventIDs
 }
 
 func NewStorage(db *sql.DB) Storage {
@@ -84,9 +30,3 @@ func NewStorage(db *sql.DB) Storage {
 	}
 }
 
-func generateUUIDWithSuffix(module string) string {
-	id := uuid.New() // Generate a new UUID.
-	uuidStr := id.String()
-	idWithSuffix := fmt.Sprintf("%s_%s", module, uuidStr) // Append the module as a suffix to the UUID.
-	return idWithSuffix
-}

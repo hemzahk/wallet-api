@@ -9,6 +9,11 @@ import (
 	"github.com/hemzahk/wallet-api/internal/dbtx"
 )
 
+type Merchants interface {
+	Create(ctx context.Context, merchant *Merchant) error
+	GetByUserID(ctx context.Context, userID uuid.UUID) (*Merchant, error)
+}
+
 type Merchant struct {
 	ID uuid.UUID `json:"id"`
 	UserID uuid.UUID `json:"user_id"`

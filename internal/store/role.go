@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+type Roles interface {
+	GetByName(ctx context.Context, roleName string) (*Role, error)
+}
+
 type Role struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`

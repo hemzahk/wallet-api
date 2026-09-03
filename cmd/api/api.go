@@ -84,7 +84,14 @@ func (app *application) mount() http.Handler {
 	r.Use(middleware.Timeout(60 * time.Second))
 	// r.Use(app.AuthTokenMiddleware)
 
-	userService := users.NewService(app.store, app.txManager, app.mailer, app.authenticator, app.logger)
+	userService := users.NewService(app.store.Users,
+									app.store.Identities, 
+									app.store.Balances,
+									app.store.Merchants,
+									app.txManager, 
+									app.mailer, 
+									app.authenticator, 
+									app.logger)
 	userHandler := users.NewHandler(userService)
 	authMiddleware := middlewares.NewAuthMiddleware(app.authenticator, app.store)
 
@@ -105,7 +112,7 @@ func (app *application) mount() http.Handler {
 			r.Put("/activate/{token}", userHandler.ActivateMerchant)
 		})
 
-		walletService := wallets.NewService(app.store, app.txManager, app.gateway)
+		walletService := wallets.NewService(app.store.Transactions, app.store.Balances, app.store.WebhookEventIDs, app.txManager, app.gateway)
 		walletHandler := wallets.NewHandler(walletService, app.gateway)
 
 		r.Post("/webhooks/topup", walletHandler.TopupWebhook)
@@ -124,7 +131,12 @@ func (app *application) mount() http.Handler {
 			r.Get("/wallet", walletHandler.GetWallet)
 			r.Get("/wallet/transactions", walletHandler.GetTransactionHistory)
 			
-			paymentService := payments.NewService(app.store, app.txManager)
+			paymentService := payments.NewService(app.store.CheckoutSessions,
+												  app.store.Merchants,
+												  app.store.Transactions,
+												  app.store.Balances, 
+												  app.txManager,
+												)
 			paymentHandler := payments.NewHandler(paymentService)
 			r.Post("/payments/checkout-sessions", authMiddleware.CheckRequiredRole("merchant", paymentHandler.CreateCheckoutSession))
 			r.Get("/payments/checkout-sessions/{token}", authMiddleware.CheckRequiredRole("customer", paymentHandler.GetCheckoutSession))

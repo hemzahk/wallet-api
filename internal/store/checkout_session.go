@@ -16,6 +16,11 @@ var (
 	ErrCheckoutSessionNotFound = errors.New("checkout session not found or expired")
 )
 
+type CheckoutSessions interface {
+		Create(ctx context.Context, session *CheckoutSession) error
+		GetByToken(ctx context.Context, token string) (*CheckoutSession, error)
+}
+
 type CheckoutSession struct {
 	ID uuid.UUID `json:"id"`
 	Token string `json:"token"`
