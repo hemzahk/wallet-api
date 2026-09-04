@@ -19,12 +19,12 @@ const (
 )
 
 type IdempotencyMiddleware struct {
-	store store.Storage
+	idempotencyKeys store.IdempotencyKeys
 }
 
-func NewIdempotencyMiddleware(store store.Storage) *IdempotencyMiddleware {
+func NewIdempotencyMiddleware(idempotencyKeys store.IdempotencyKeys) *IdempotencyMiddleware {
 	return &IdempotencyMiddleware{
-		store: store,
+		idempotencyKeys: idempotencyKeys,
 	}
 }
 
@@ -53,7 +53,7 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
     return rw.ResponseWriter.Write(b)
 }
 
-func (i *IdempotencyMiddleware) Wrap(next http.Handler) http.Handler {
+func (m *IdempotencyMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := r.Header.Get("Idempotency-Key")
 		if key == "" {
@@ -73,7 +73,7 @@ func (i *IdempotencyMiddleware) Wrap(next http.Handler) http.Handler {
 
 		hash := fmt.Sprintf("%x", sha256.Sum256(bodyBytes))
 
-		existing, err := i.store.IdempotencyKeys.Get(r.Context(), key, user.ID)
+		existing, err := m.idempotencyKeys.Get(r.Context(), key, user.ID)
 		if err != nil && !errors.Is(err, store.ErrKeyNotFound){
 			json.InternalServerError(w, r, err)
 			return 
@@ -101,7 +101,7 @@ func (i *IdempotencyMiddleware) Wrap(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, "idempotency-key", key)
 		next.ServeHTTP(rw, r.WithContext(ctx))
 
-		_ = i.store.IdempotencyKeys.Create(r.Context(), store.IdempotencyKey{
+		_ = m.idempotencyKeys.Create(r.Context(), store.IdempotencyKey{
 				Key:          key,
                 UserID:       user.ID,
                 RequestHash:  hash,

@@ -15,17 +15,19 @@ import (
 
 type AuthMiddleware struct {
 	authenticator auth.Authenticator
-	store store.Storage
+	users store.Users
+	roles store.Roles
 }
 
-func NewAuthMiddleware(auth auth.Authenticator, store store.Storage) *AuthMiddleware {
+func NewAuthMiddleware(auth auth.Authenticator, users store.Users, roles store.Roles) *AuthMiddleware {
 	return &AuthMiddleware{
 		authenticator: auth,
-		store: store,
+		users: users,
+		roles: roles,
 	}
 }
 
-func (a *AuthMiddleware) AuthTokenMiddleware(next http.Handler) http.Handler {
+func (m *AuthMiddleware) AuthTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -40,7 +42,7 @@ func (a *AuthMiddleware) AuthTokenMiddleware(next http.Handler) http.Handler {
 		}
 
 		token := parts[1]
-		jwtToken, err := a.authenticator.ValidateToken(token)
+		jwtToken, err := m.authenticator.ValidateToken(token)
 		if err != nil {
 			json.UnauthorizedErrorResponse(w,r,err)
 			return 
@@ -61,7 +63,7 @@ func (a *AuthMiddleware) AuthTokenMiddleware(next http.Handler) http.Handler {
 
 		ctx := r.Context()
 		
-		user, err := a.store.Users.GetByID(ctx, userID)
+		user, err := m.users.GetByID(ctx, userID)
 		if err != nil {
 			json.UnauthorizedErrorResponse(w,r,err)
 			return 
@@ -72,9 +74,9 @@ func (a *AuthMiddleware) AuthTokenMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (a *AuthMiddleware) CheckRequiredRole(requiredRole string, next http.HandlerFunc) http.HandlerFunc {
+func (m *AuthMiddleware) CheckRequiredRole(requiredRole string, next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		role, err := a.store.Roles.GetByName(r.Context(), requiredRole)
+		role, err := m.roles.GetByName(r.Context(), requiredRole)
 		if err != nil {
 			json.ForbiddenResponse(w, r)
 			return

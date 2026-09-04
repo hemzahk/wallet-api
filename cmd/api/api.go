@@ -93,7 +93,7 @@ func (app *application) mount() http.Handler {
 									app.authenticator, 
 									app.logger)
 	userHandler := users.NewHandler(userService)
-	authMiddleware := middlewares.NewAuthMiddleware(app.authenticator, app.store)
+	authMiddleware := middlewares.NewAuthMiddleware(app.authenticator, app.store.Users, app.store.Roles)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		docsURL := fmt.Sprintf("%s/swagger/doc.json", app.config.addr)
@@ -124,7 +124,7 @@ func (app *application) mount() http.Handler {
 			r.Post("/token", userHandler.CreateToken)
 		})
 
-		idempotencyMiddleware := middlewares.NewIdempotencyMiddleware(app.store)
+		idempotencyMiddleware := middlewares.NewIdempotencyMiddleware(app.store.IdempotencyKeys)
 
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware.AuthTokenMiddleware)
