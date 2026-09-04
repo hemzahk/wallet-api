@@ -90,18 +90,6 @@ type PaymentDTO struct {
 
 func (h *handler) Pay(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
-
-	// var payload PaymentDTO
-	// if err := json.ReadJSON(w, r, &payload); err != nil {
-	// 	json.InternalServerError(w, r, err)
-	// 	return
-	// }
-
-	// if err := json.Validate.Struct(payload); err != nil {
-	// 	json.BadRequestResponse(w, r, err)
-	// 	return
-	// }
-
 	user := r.Context().Value("user").(*store.User)
 
 	if err := h.service.Pay(r.Context(), token, user); err != nil {

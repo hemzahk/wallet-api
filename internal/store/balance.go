@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -12,7 +13,9 @@ import (
 )
 
 var (
-	ErrOptimisticLock = errors.New("balance: version conflict or balance not found")
+	ErrBalanceNotFound = errors.New("balance not found")
+	ErrOptimisticLock  = errors.New("balance: version conflict or balance not found")
+	ErrInvalidBalance  = errors.New("balance is nil or incomplete")
 )
 
 type Balances interface {
@@ -26,16 +29,16 @@ type Balances interface {
 }
 
 type Balance struct {
-	ID uuid.UUID `json:"-"`
-	BalanceID string `json:"balance_id"`
-	Balance *big.Int `json:"balance"`
-	InflightCreditBalance *big.Int `json:"inflight_credit_balance"`
-	InflightDebitBalance *big.Int `json:"inflight_debit_balance"`
-	Currency string `json:"currency"`
-	LedgerID string `json:"ledger_id"`
-	IdentityID uuid.UUID `json:"identity_id"`
-	Version int `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
+	ID                    uuid.UUID `json:"-"`
+	BalanceID             string    `json:"balance_id"`
+	Balance               *big.Int  `json:"balance"`
+	InflightCreditBalance *big.Int  `json:"inflight_credit_balance"`
+	InflightDebitBalance  *big.Int  `json:"inflight_debit_balance"`
+	Currency              string    `json:"currency"`
+	LedgerID              string    `json:"ledger_id"`
+	IdentityID            uuid.UUID `json:"identity_id"`
+	Version               int       `json:"version"`
+	CreatedAt             time.Time `json:"created_at"`
 }
 
 type BalanceStore struct {
@@ -43,6 +46,10 @@ type BalanceStore struct {
 }
 
 func (s *BalanceStore) CreateBalance(ctx context.Context, balance *Balance) error {
+	if balance == nil {
+		return ErrInvalidBalance
+	}
+
 	dbtx := dbtx.ExtractTx(ctx, s.db)
 	query := `
 		INSERT INTO balances (id, balance_id, ledger_id, identity_id, created_at)
@@ -54,15 +61,15 @@ func (s *BalanceStore) CreateBalance(ctx context.Context, balance *Balance) erro
 
 	_, err := dbtx.ExecContext(
 		ctx,
-		query, 
+		query,
 		&balance.ID,
-		&balance.BalanceID, 
+		&balance.BalanceID,
 		&balance.LedgerID,
 		&balance.IdentityID,
 		&balance.CreatedAt,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating balance: %w", err)
 	}
 
 	return nil
@@ -88,14 +95,14 @@ func (s *BalanceStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID
 		&rawBalance,
 		&rawInflightCreditBalance,
 		&rawInflightDebitBalance,
-		&balance.IdentityID, 
+		&balance.IdentityID,
 		&balance.LedgerID,
-		&balance.Currency, 
+		&balance.Currency,
 		&balance.Version,
 		&balance.CreatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting balance by identity ID: %w", balanceLookupError(err))
 	}
 
 	balance.Balance = big.NewInt(rawBalance)
@@ -118,21 +125,21 @@ func (s *BalanceStore) GetByEmail(ctx context.Context, email string) (*Balance, 
 
 	balance := &Balance{}
 	var balanceAsInt int64
-	
+
 	err := s.db.QueryRowContext(ctx, query, email).Scan(
 		&balance.ID,
 		&balance.IdentityID,
 		&balance.LedgerID,
-		&balance.BalanceID, 
+		&balance.BalanceID,
 		&balanceAsInt,
 		&balance.Currency,
 		&balance.Version,
 		&balance.CreatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting balance by email: %w", balanceLookupError(err))
 	}
-	
+
 	balanceAsBigInt := big.NewInt(balanceAsInt)
 	balance.Balance = balanceAsBigInt
 
@@ -160,7 +167,7 @@ func (s *BalanceStore) GetByUserID(ctx context.Context, userID uuid.UUID) (*Bala
 		&balance.ID,
 		&balance.IdentityID,
 		&balance.LedgerID,
-		&balance.BalanceID, 
+		&balance.BalanceID,
 		&balanceAsInt,
 		&inflightCreditBalance,
 		&inflightDebitBalance,
@@ -169,9 +176,9 @@ func (s *BalanceStore) GetByUserID(ctx context.Context, userID uuid.UUID) (*Bala
 		&balance.CreatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting balance by user ID: %w", balanceLookupError(err))
 	}
-	
+
 	balance.Balance = big.NewInt(balanceAsInt)
 	balance.InflightCreditBalance = big.NewInt(inflightCreditBalance)
 	balance.InflightDebitBalance = big.NewInt(inflightDebitBalance)
@@ -192,7 +199,7 @@ func (s *BalanceStore) GetByBalanceID(ctx context.Context, balanceID string) (*B
 	balance := &Balance{}
 	var rawBalance int64
 	var inflightCreditBalance int64
-	var inflightDebitBalance int64 
+	var inflightDebitBalance int64
 
 	err := s.db.QueryRowContext(ctx, query, balanceID).Scan(
 		&balance.ID,
@@ -200,20 +207,20 @@ func (s *BalanceStore) GetByBalanceID(ctx context.Context, balanceID string) (*B
 		&rawBalance,
 		&inflightCreditBalance,
 		&inflightDebitBalance,
-		&balance.IdentityID, 
+		&balance.IdentityID,
 		&balance.LedgerID,
-		&balance.Currency, 
+		&balance.Currency,
 		&balance.Version,
 		&balance.CreatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting balance by balance ID: %w", balanceLookupError(err))
 	}
 
-	balance.Balance =  big.NewInt(rawBalance)
+	balance.Balance = big.NewInt(rawBalance)
 	balance.InflightCreditBalance = big.NewInt(inflightCreditBalance)
 	balance.InflightDebitBalance = big.NewInt(inflightDebitBalance)
-	
+
 	return balance, nil
 }
 
@@ -248,19 +255,23 @@ func (s *BalanceStore) GetByMerchantID(ctx context.Context, merchantID uuid.UUID
 		&balance.CreatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting balance by merchant ID: %w", balanceLookupError(err))
 	}
 
 	balance.Balance = big.NewInt(rawBalance)
 	balance.InflightCreditBalance = big.NewInt(inflightCreditBalance)
 	balance.InflightDebitBalance = big.NewInt(inflightDebitBalance)
-	
+
 	return balance, nil
 }
 
 func (s *BalanceStore) UpdateBalance(ctx context.Context, balance *Balance) error {
+	if balance == nil || balance.Balance == nil || balance.InflightCreditBalance == nil || balance.InflightDebitBalance == nil {
+		return ErrInvalidBalance
+	}
+
 	dbtx := dbtx.ExtractTx(ctx, s.db)
-	
+
 	query := `
 		UPDATE balances 
 		SET balance = $1, 
@@ -276,23 +287,31 @@ func (s *BalanceStore) UpdateBalance(ctx context.Context, balance *Balance) erro
 
 	var newVersion int64
 	err := dbtx.QueryRowContext(
-		ctx, query, 
-		balance.Balance.Int64(), 
-		balance.InflightCreditBalance.Int64(), 
-		balance.InflightDebitBalance.Int64(), 
-		balance.BalanceID, 
+		ctx, query,
+		balance.Balance.Int64(),
+		balance.InflightCreditBalance.Int64(),
+		balance.InflightDebitBalance.Int64(),
+		balance.BalanceID,
 		balance.Version).Scan(
-			&newVersion,
-		)
+		&newVersion,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrOptimisticLock
 	}
-	
+
 	if err != nil {
-		return err
+		return fmt.Errorf("updating balance %q: %w", balance.BalanceID, err)
 	}
 
 	balance.Version = int(newVersion)
 
 	return nil
+}
+
+func balanceLookupError(err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrBalanceNotFound
+	}
+
+	return err
 }

@@ -17,8 +17,8 @@ const (
 )
 
 type Identities interface {
-		Create(ctx context.Context, identity *Identity) error
-		Delete(ctx context.Context, identityID uuid.UUID) error
+	Create(ctx context.Context, identity *Identity) error
+	Delete(ctx context.Context, identityID uuid.UUID) error
 }
 
 type Identity struct {
