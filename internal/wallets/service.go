@@ -44,7 +44,7 @@ type Service interface {
 	PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 	Transfer(ctx context.Context, payload TransferDTO, user *store.User) error
 	GetWallet(ctx context.Context, userID uuid.UUID) (*big.Float, error)
-	GetTransactionHistory(ctx context.Context, identityID uuid.UUID) (*store.Balance, []store.Transaction, error)
+	GetTransactionHistory(ctx context.Context, identityID uuid.UUID) ([]Transaction, error)
 }
 
 type svc struct {
@@ -436,18 +436,45 @@ func (s *svc) GetWallet(ctx context.Context, userID uuid.UUID) (*big.Float, erro
 	return dzdBalance, nil
 }
 
-func (s *svc) GetTransactionHistory(ctx context.Context, identityID uuid.UUID) (*store.Balance, []store.Transaction, error) {
+type Transaction struct {
+	Amount string `json:"amount"`
+	TransactionRef string `json:"transaction_ref"`
+	Description string `json:"description"`
+	Type string `json:"type"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (s *svc) GetTransactionHistory(ctx context.Context, identityID uuid.UUID) ([]Transaction, error) {
 	balance, err := s.balances.GetByIdentityID(ctx, identityID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	transactions, err := s.transactions.GetByIdentityID(ctx, identityID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return balance, transactions, nil
+	var txns []Transaction
+	for _, val := range transactions {
+		amountAsFloat := toFloat(val.PreciseAmount)
+		t := Transaction{
+			TransactionRef: val.Reference,
+			Amount: amountAsFloat.String(),
+			CreatedAt: val.CreatedAt.String(),
+			Description: val.Description,
+		}
+
+		if val.Source == balance.BalanceID {
+			t.Type = "debit"
+		} else if val.Destination == balance.BalanceID {
+			t.Type = "credit"
+		}
+
+		txns = append(txns, t)
+	}
+
+	return txns, nil
 }
 
 func amountInCentimes(amount string) (*big.Int, error) {

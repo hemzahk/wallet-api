@@ -212,41 +212,16 @@ func (h *handler) GetWallet(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type Transaction struct {
-	Amount string `json:"amount"`
-	Description string `json:"description"`
-	Type string `json:"type"`
-	CreatedAt string `json:"created_at"`
-}
-
 func (h *handler) GetTransactionHistory(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value("user").(*store.User)
 
-	balance, transactions, err := h.service.GetTransactionHistory(r.Context(), user.IdentityID)
+	transactions, err := h.service.GetTransactionHistory(r.Context(), user.IdentityID)
 	if err != nil {
 		json.InternalServerError(w, r, err)
 		return
 	}
 
-	var response []Transaction
-	for _, val := range transactions {
-		amountAsFloat := toFloat(val.PreciseAmount)
-		t := Transaction{
-			Amount: amountAsFloat.String(),
-			CreatedAt: val.CreatedAt.String(),
-			Description: val.Description,
-		}
-
-		if val.Source == balance.BalanceID {
-			t.Type = "debit"
-		} else if val.Destination == balance.BalanceID {
-			t.Type = "credit"
-		}
-
-		response = append(response, t)
-	}
-
-	if err := json.JsonResponse(w, http.StatusOK, response); err != nil {
+	if err := json.JsonResponse(w, http.StatusOK, transactions); err != nil {
 		json.InternalServerError(w, r, err)
 	}
 }
