@@ -23,6 +23,7 @@ type Service interface {
 	CreateCheckoutSession(ctx context.Context, payload CheckoutSessionDTO, user *store.User)(string, error)
 	GetCheckoutSession(ctx context.Context, token string) (*store.CheckoutSession, error)
 	Pay(ctx context.Context, token string, user *store.User) error
+	Refund(ctx context.Context, payload RefundDTO) error
 }
 
 type svc struct {
@@ -185,6 +186,67 @@ func (s *svc) Pay(ctx context.Context, token string, user *store.User) error {
 		return err
 	}
 	
+	return nil
+}
+
+func (s *svc) Refund(ctx context.Context, payload RefundDTO) error {
+	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
+		transaction, err := s.transactions.GetByRef(ctx, payload.TransactionRef)
+		if err != nil {
+			return fmt.Errorf("fetching transaction: %w", err)
+		}
+
+		merchantBalance, err := s.balances.GetByBalanceID(ctx, transaction.Destination)
+		if err != nil {
+			return fmt.Errorf("fetching merchant balance: %w", err)
+		}
+
+		customerBalance, err := s.balances.GetByBalanceID(ctx, transaction.Source)
+		if err != nil {
+			return fmt.Errorf("fetching customer balance: %w", err)
+		}
+
+		// check merchant has sufficient balance:
+		if merchantBalance.Balance.Cmp(transaction.PreciseAmount) < 0 {
+			return ErrInsufficientBalance
+		}
+
+		// debit merchant:
+		merchantBalance.Balance.Sub(merchantBalance.Balance, transaction.PreciseAmount)
+
+		// credit merchant:
+		customerBalance.Balance.Add(customerBalance.Balance, transaction.PreciseAmount)
+
+		// update balances:
+		if err := s.balances.UpdateBalance(ctx, merchantBalance); err != nil {
+			return fmt.Errorf("updating balance: %w", err)
+		}
+
+		if err := s.balances.UpdateBalance(ctx, customerBalance); err != nil {
+			return fmt.Errorf("updating balance: %w", err)
+		}
+
+		// record transaction:
+		refundTransaction := &store.Transaction{
+			ID: uuid.New(),
+			PreciseAmount: transaction.PreciseAmount,
+			Reference: fmt.Sprintf("%s_refund", transaction.Reference),
+			Source: transaction.Destination,
+			Destination: transaction.Source,
+			Status: "applied",
+			Description: "refund",
+			CreatedAt: time.Now(),
+		}
+
+		if err := s.transactions.Record(ctx, refundTransaction); err != nil {
+			return fmt.Errorf("recording transaction: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("refund failed: %w", err)
+	}
+
 	return nil
 }
 

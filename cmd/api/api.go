@@ -147,6 +147,7 @@ func (app *application) mount() http.Handler {
 				r.Post("/wallet/transfer", authMiddleware.CheckRequiredRole("customer", walletHandler.Transfer))
 				r.Post("/wallet/withdraw",authMiddleware.CheckRequiredRole("customer", walletHandler.Withdraw) )
 				r.Post("/payments/checkout-sessions/{token}/pay",authMiddleware.CheckRequiredRole("customer", paymentHandler.Pay))
+				r.Post("/refunds", authMiddleware.CheckRequiredRole("customer", paymentHandler.Refund))
 			})
 		})
 	})

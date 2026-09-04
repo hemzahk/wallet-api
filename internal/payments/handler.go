@@ -106,3 +106,30 @@ func (h *handler) Pay(w http.ResponseWriter, r *http.Request) {
 		json.InternalServerError(w, r, err)
 	}
 }
+
+type RefundDTO struct {
+	TransactionRef string `json:"transaction_ref" validate:"required"`
+}
+
+func (h *handler) Refund(w http.ResponseWriter, r *http.Request) {
+	var payload RefundDTO
+	if err := json.ReadJSON(w, r, &payload); err != nil {
+		json.InternalServerError(w, r, err)
+		return
+	}
+
+	if err := json.Validate.Struct(payload); err != nil {
+		json.BadRequestResponse(w, r, err)
+		return
+	}
+
+	if err := h.service.Refund(r.Context(), payload); err != nil {
+		json.InternalServerError(w, r, err)
+		return
+	}
+
+	if err := json.JsonResponse(w, http.StatusOK, "success"); err != nil {
+		json.InternalServerError(w, r, err)
+	}
+}
+
