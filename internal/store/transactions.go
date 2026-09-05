@@ -13,19 +13,20 @@ import (
 type Transactions interface {
 	Record(ctx context.Context, transaction *Transaction) error
 	GetByRef(ctx context.Context, reference string) (*Transaction, error)
+	MarkRefunded(ctx context.Context, reference string) error
 	GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error)
 }
 
 type Transaction struct {
-	ID uuid.UUID `json:"id"`
+	ID                uuid.UUID `json:"id"`
 	ParentTransaction uuid.UUID `json:"parent_transaction"`
-	PreciseAmount *big.Int `json:"precise_amount"` 
-	Reference string `json:"reference"`
-	Source string `json:"source"`
-	Destination string `json:"destination"`
-	Status string `json:"status"`
-	Description string `json:"description"`
-	CreatedAt time.Time `json:"created_at"`
+	PreciseAmount     *big.Int  `json:"precise_amount"`
+	Reference         string    `json:"reference"`
+	Source            string    `json:"source"`
+	Destination       string    `json:"destination"`
+	Status            string    `json:"status"`
+	Description       string    `json:"description"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 type TransactionStore struct {
@@ -53,7 +54,7 @@ func (s *TransactionStore) Record(ctx context.Context, transaction *Transaction)
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	// transaction.Reference = generateUUIDWithSuffix("txn") send this from the frontend ??? 
+	// transaction.Reference = generateUUIDWithSuffix("txn") send this from the frontend ???
 
 	_, err := dbtx.ExecContext(
 		ctx,
@@ -76,6 +77,7 @@ func (s *TransactionStore) Record(ctx context.Context, transaction *Transaction)
 }
 
 func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Transaction, error) {
+	dbtx := dbtx.ExtractTx(ctx, s.db)
 	query := `
 		SELECT id, parent_transaction, reference, precise_amount, source, destination, status, description, created_at
 		FROM transactions
@@ -87,7 +89,7 @@ func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Tra
 
 	transaction := &Transaction{}
 	var rawAmount int64
-	err := s.db.QueryRowContext(ctx, query, reference).Scan(
+	err := dbtx.QueryRowContext(ctx, query, reference).Scan(
 		&transaction.ID,
 		&transaction.ParentTransaction,
 		&transaction.Reference,
@@ -95,7 +97,7 @@ func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Tra
 		&transaction.Source,
 		&transaction.Destination,
 		&transaction.Status,
-		&transaction.Description, 
+		&transaction.Description,
 		&transaction.CreatedAt,
 	)
 	if err != nil {
@@ -106,6 +108,16 @@ func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Tra
 	transaction.PreciseAmount = amountAsBigInt
 
 	return transaction, nil
+}
+
+func (s *TransactionStore) MarkRefunded(ctx context.Context, reference string) error {
+	dbtx := dbtx.ExtractTx(ctx, s.db)
+	_, err := dbtx.ExecContext(ctx, `
+		UPDATE transactions
+		SET status = 'refunded'
+		WHERE reference = $1 AND status = 'applied'
+	`, reference)
+	return err
 }
 
 func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error) {
@@ -134,12 +146,12 @@ func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.
 			&t.ParentTransaction,
 			&t.Reference,
 			&rawAmount,
-			&t.Source, 
+			&t.Source,
 			&t.Destination,
 			&t.Status,
-			&t.Description, 
-			&t.CreatedAt, 
-			); err != nil {
+			&t.Description,
+			&t.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
 		amountAsBigInt := big.NewInt(rawAmount)
@@ -149,6 +161,3 @@ func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.
 
 	return transactions, nil
 }
-
-
-

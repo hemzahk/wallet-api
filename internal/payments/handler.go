@@ -111,7 +111,7 @@ type RefundDTO struct {
 	TransactionRef string `json:"transaction_ref" validate:"required"`
 }
 
-func (h *handler) Refund(w http.ResponseWriter, r *http.Request) {
+func (h *handler) RequestRefund(w http.ResponseWriter, r *http.Request) {
 	var payload RefundDTO
 	if err := json.ReadJSON(w, r, &payload); err != nil {
 		json.InternalServerError(w, r, err)
@@ -122,14 +122,36 @@ func (h *handler) Refund(w http.ResponseWriter, r *http.Request) {
 		json.BadRequestResponse(w, r, err)
 		return
 	}
-
-	if err := h.service.Refund(r.Context(), payload); err != nil {
+	
+	if err := h.service.RequestRefund(r.Context(), payload); err != nil {
 		json.InternalServerError(w, r, err)
 		return
 	}
 
-	if err := json.JsonResponse(w, http.StatusOK, "success"); err != nil {
+	if err := json.JsonResponse(w, http.StatusAccepted, map[string]string{"status": "pending"}); err != nil {
 		json.InternalServerError(w, r, err)
-	}
+	}	
 }
+
+// func (h *handler) Refund(w http.ResponseWriter, r *http.Request) {
+// 	var payload RefundDTO
+// 	if err := json.ReadJSON(w, r, &payload); err != nil {
+// 		json.InternalServerError(w, r, err)
+// 		return
+// 	}
+
+// 	if err := json.Validate.Struct(payload); err != nil {
+// 		json.BadRequestResponse(w, r, err)
+// 		return
+// 	}
+
+// 	if err := h.service.Refund(r.Context(), payload); err != nil {
+// 		json.InternalServerError(w, r, err)
+// 		return
+// 	}
+
+// 	if err := json.JsonResponse(w, http.StatusOK, "success"); err != nil {
+// 		json.InternalServerError(w, r, err)
+// 	}
+// }
 
