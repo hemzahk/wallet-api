@@ -20,6 +20,7 @@ import (
 	"github.com/hemzahk/wallet-api/internal/mailer"
 	"github.com/hemzahk/wallet-api/internal/middlewares"
 	"github.com/hemzahk/wallet-api/internal/payments"
+	"github.com/hemzahk/wallet-api/internal/ratelimiter"
 	"github.com/hemzahk/wallet-api/internal/store"
 	"github.com/hemzahk/wallet-api/internal/users"
 	"github.com/hemzahk/wallet-api/internal/wallets"
@@ -35,6 +36,7 @@ type application struct {
 	mailer mailer.Client
 	authenticator auth.Authenticator
 	gateway gateway.PaymentGateway
+	limiter ratelimiter.Limiter
 }
 
 type config struct {
@@ -46,6 +48,7 @@ type config struct {
 	mail mailConfig
 	auth authConfig
 	gateway gatewayConfig
+	ratelimiter ratelimiter.Config
 }
 
 type dbConfig struct {
@@ -86,8 +89,10 @@ func (app *application) mount() http.Handler {
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(middleware.ClientIPFromRemoteAddr)
 	r.Use(middleware.Timeout(60 * time.Second))
-	// r.Use(app.AuthTokenMiddleware)
+
+	rateLimiterMiddleware := middlewares.NewRateLimiterMiddleware(app.limiter)
 
 	userService := users.NewService(app.store.Users,
 									app.store.Identities, 
@@ -99,7 +104,7 @@ func (app *application) mount() http.Handler {
 									app.logger)
 	userHandler := users.NewHandler(userService)
 	authMiddleware := middlewares.NewAuthMiddleware(app.authenticator, app.store.Users, app.store.Roles)
-
+	r.Use(rateLimiterMiddleware.RateLimiterMiddleware)
 	r.Route("/api/v1", func(r chi.Router) {
 		docsURL := fmt.Sprintf("%s/swagger/doc.json", app.config.addr)
 		r.Get("/swagger/*", httpSwagger.Handler(httpSwagger.URL(docsURL)))
@@ -107,6 +112,7 @@ func (app *application) mount() http.Handler {
 			Env: app.config.env,
 			Version: version,
 		})
+		
 		r.Get("/health", healthCheckHandler.HealthCheck)
 
 		r.Route("/users", func(r chi.Router) {

@@ -9,12 +9,13 @@ import (
 	"github.com/hemzahk/wallet-api/internal/env"
 	"github.com/hemzahk/wallet-api/internal/gateway"
 	"github.com/hemzahk/wallet-api/internal/mailer"
+	"github.com/hemzahk/wallet-api/internal/ratelimiter"
 	"github.com/hemzahk/wallet-api/internal/store"
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
 
-const version = "0.0.2"
+const version = "0.0.1"
 
 // @title Wallet API
 // @description This is digital wallet API.
@@ -75,6 +76,11 @@ func main() {
 			webhookSecret: env.GetString("WEBHOOK_SECRET"),
 			baseURL: env.GetString("GATEWAY_BASE_URL"),
 		},
+		ratelimiter: ratelimiter.Config{
+			RequestPerTimeFrame: env.GetInt("RATELIMITER_REQUESTS_COUNT"),
+			TimeFrame: 5*time.Second,
+			Enabled: env.GetBool("RATELIMITER_ENABLED"),
+		},
 	}
 
 	db, err := database.New(
@@ -107,6 +113,11 @@ func main() {
 
 	gateway := gateway.NewStubGateway(cfg.gateway.webhookSecret, cfg.gateway.baseURL)
 
+	ratelimiter := ratelimiter.NewFixedWindowLimiter(
+		cfg.ratelimiter.RequestPerTimeFrame,
+		cfg.ratelimiter.TimeFrame,
+	)
+
 	app := &application{
 		config: cfg,
 		logger: logger,
@@ -115,6 +126,7 @@ func main() {
 		mailer: mailtrap,
 		authenticator: jwtAuthenticator,
 		gateway: gateway,
+		limiter: ratelimiter,
 	}
 
 	mux := app.mount()
