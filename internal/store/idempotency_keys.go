@@ -40,10 +40,10 @@ func (s *IdempotencyKeyStore) Create(ctx context.Context, record IdempotencyKey)
 	defer cancel()
 
 	_, err := s.db.ExecContext(ctx, query, record.Key, record.UserID, record.RequestHash, record.ResponseBody, record.StatusCode)
-
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 

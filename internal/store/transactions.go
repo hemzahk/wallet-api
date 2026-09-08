@@ -3,11 +3,16 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"math/big"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/hemzahk/wallet-api/internal/dbtx"
+)
+
+var (
+	ErrTransactionNotFound = errors.New("transaction not found")
 )
 
 type Transactions interface {
@@ -53,8 +58,6 @@ func (s *TransactionStore) Record(ctx context.Context, transaction *Transaction)
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	// transaction.Reference = generateUUIDWithSuffix("txn") send this from the frontend ??? 
-
 	_, err := dbtx.ExecContext(
 		ctx,
 		query,
@@ -99,11 +102,15 @@ func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Tra
 		&transaction.CreatedAt,
 	)
 	if err != nil {
-		return nil, err
+		switch err {
+		case sql.ErrNoRows:
+			return nil, ErrTransactionNotFound
+		default:
+			return nil, err
+		}
 	}
 
-	amountAsBigInt := big.NewInt(rawAmount)
-	transaction.PreciseAmount = amountAsBigInt
+	transaction.PreciseAmount = big.NewInt(rawAmount)
 
 	return transaction, nil
 }
@@ -129,7 +136,7 @@ func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.
 	for rows.Next() {
 		var t Transaction
 		var rawAmount int64
-		if err := rows.Scan(
+		err := rows.Scan(
 			&t.ID,
 			&t.ParentTransaction,
 			&t.Reference,
@@ -139,11 +146,12 @@ func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.
 			&t.Status,
 			&t.Description, 
 			&t.CreatedAt, 
-			); err != nil {
+			)
+		if err != nil {
 			return nil, err
 		}
-		amountAsBigInt := big.NewInt(rawAmount)
-		t.PreciseAmount = amountAsBigInt
+	
+		t.PreciseAmount = big.NewInt(rawAmount)
 		transactions = append(transactions, t)
 	}
 

@@ -85,7 +85,7 @@ func (s *IdentityStore) Create(ctx context.Context, identity *Identity) error {
 							 &identity.IdentityType,
 							 &identity.OrganizationName,
 							 &identity.Category, 
-							)	
+						)	
 	if err != nil {
 		return err
 	}

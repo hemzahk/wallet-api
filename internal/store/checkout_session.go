@@ -99,8 +99,7 @@ func (s *CheckoutSessionStore) GetByToken(ctx context.Context, token string) (*C
 		}
 	}
 
-	amountAsBigInt := big.NewInt(rawAmount)
-	session.Amount = amountAsBigInt
-
+	session.Amount = big.NewInt(rawAmount)
+	
 	return session, nil
 }

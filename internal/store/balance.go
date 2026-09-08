@@ -86,15 +86,14 @@ func (s *BalanceStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID
 	defer cancel()
 
 	balance := &Balance{}
-	var rawBalance int64
-	var rawInflightCreditBalance int64
-	var rawInflightDebitBalance int64
+	var rawBalance, inflightCreditBalance, inflightDebitBalance int64
+
 	err := s.db.QueryRowContext(ctx, query, identityID).Scan(
 		&balance.ID,
 		&balance.BalanceID,
 		&rawBalance,
-		&rawInflightCreditBalance,
-		&rawInflightDebitBalance,
+		&inflightCreditBalance,
+		&inflightDebitBalance,
 		&balance.IdentityID,
 		&balance.LedgerID,
 		&balance.Currency,
@@ -106,8 +105,8 @@ func (s *BalanceStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID
 	}
 
 	balance.Balance = big.NewInt(rawBalance)
-	balance.InflightCreditBalance = big.NewInt(rawInflightCreditBalance)
-	balance.InflightDebitBalance = big.NewInt(rawInflightDebitBalance)
+	balance.InflightCreditBalance = big.NewInt(inflightCreditBalance)
+	balance.InflightDebitBalance = big.NewInt(inflightDebitBalance)
 
 	return balance, nil
 }
@@ -140,8 +139,7 @@ func (s *BalanceStore) GetByEmail(ctx context.Context, email string) (*Balance, 
 		return nil, fmt.Errorf("getting balance by email: %w", balanceLookupError(err))
 	}
 
-	balanceAsBigInt := big.NewInt(balanceAsInt)
-	balance.Balance = balanceAsBigInt
+	balance.Balance = big.NewInt(balanceAsInt)
 
 	return balance, nil
 }
@@ -158,17 +156,14 @@ func (s *BalanceStore) GetByUserID(ctx context.Context, userID uuid.UUID) (*Bala
 	defer cancel()
 
 	balance := &Balance{}
-
-	var balanceAsInt int64
-	var inflightCreditBalance int64
-	var inflightDebitBalance int64
+	var rawBalance, inflightCreditBalance, inflightDebitBalance int64
 
 	err := s.db.QueryRowContext(ctx, query, userID).Scan(
 		&balance.ID,
 		&balance.IdentityID,
 		&balance.LedgerID,
 		&balance.BalanceID,
-		&balanceAsInt,
+		&rawBalance,
 		&inflightCreditBalance,
 		&inflightDebitBalance,
 		&balance.Currency,
@@ -179,7 +174,7 @@ func (s *BalanceStore) GetByUserID(ctx context.Context, userID uuid.UUID) (*Bala
 		return nil, fmt.Errorf("getting balance by user ID: %w", balanceLookupError(err))
 	}
 
-	balance.Balance = big.NewInt(balanceAsInt)
+	balance.Balance = big.NewInt(rawBalance)
 	balance.InflightCreditBalance = big.NewInt(inflightCreditBalance)
 	balance.InflightDebitBalance = big.NewInt(inflightDebitBalance)
 
@@ -197,9 +192,7 @@ func (s *BalanceStore) GetByBalanceID(ctx context.Context, balanceID string) (*B
 	defer cancel()
 
 	balance := &Balance{}
-	var rawBalance int64
-	var inflightCreditBalance int64
-	var inflightDebitBalance int64
+	var rawBalance, inflightCreditBalance, inflightDebitBalance int64
 
 	err := s.db.QueryRowContext(ctx, query, balanceID).Scan(
 		&balance.ID,
@@ -237,10 +230,7 @@ func (s *BalanceStore) GetByMerchantID(ctx context.Context, merchantID uuid.UUID
 	defer cancel()
 
 	balance := &Balance{}
-
-	var rawBalance int64
-	var inflightCreditBalance int64
-	var inflightDebitBalance int64
+	var rawBalance, inflightCreditBalance, inflightDebitBalance int64
 
 	err := s.db.QueryRowContext(ctx, query, merchantID).Scan(
 		&balance.ID,
