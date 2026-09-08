@@ -116,7 +116,7 @@ func (app *application) mount() http.Handler {
 		r.Get("/health", healthCheckHandler.HealthCheck)
 
 		r.Route("/users", func(r chi.Router) {
-			r.Put("/activate/{token}", userHandler.ActivateUser)
+			r.Put("/activate/{token}", userHandler.ActivateCustomer)
 		})
 
 		r.Route("/merchants", func(r chi.Router) {
@@ -130,7 +130,7 @@ func (app *application) mount() http.Handler {
 		r.Post("/webhooks/payout", walletHandler.PayoutWebhook)
 		
 		r.Route("/authentication", func(r chi.Router) {
-			r.Post("/user", userHandler.RegisterUser)
+			r.Post("/user", userHandler.RegisterCustomer)
 			r.Post("/merchant", userHandler.RegisterMerchant)
 			r.Post("/token", userHandler.CreateToken)
 		})

@@ -27,13 +27,13 @@ var (
 )
 
 type Service interface {
-	Register(context.Context, RegisterDTO) (string, error)
-	Activate(ctx context.Context, token string) error
+	RegisterCustomer(ctx context.Context,req RegisterRequest) (string, error)
+	ActivateCustomer(ctx context.Context, token string) error
 
-	RegisterMerchant(ctx context.Context, payload RegisterMerchantDTO) (string, error)
+	RegisterMerchant(ctx context.Context, req RegisterMerchantRequest) (string, error)
 	ActivateMerchant(ctx context.Context, token string) error
 	
-	CreateToken(ctx context.Context, payload CreateUserTokenPayload) (string, error)
+	CreateToken(ctx context.Context, req CreateUserTokenRequest) (string, error)
 }
 
 type svc struct {
@@ -67,31 +67,31 @@ func NewService(users store.Users,
 	}
 }
 
-func (s *svc) Register(ctx context.Context, payload RegisterDTO) (string, error) {
+func (s *svc) RegisterCustomer(ctx context.Context, req RegisterRequest) (string, error) {
 	user := &store.User{
 		ID: uuid.New(),
-		Email: payload.Email,
+		Email: req.Email,
 		IdentityID: uuid.New(),
 		IsActive: false,
 		RoleID: customerRoleID,
 		CreatedAt: time.Now(),
 	}
 	
-	if err := user.Password.Set(payload.Password); err != nil {
+	if err := user.Password.Set(req.Password); err != nil {
 		return "", err
 	}
 
 	identity := &store.Identity{
 		ID: user.IdentityID,
-		FirstName: payload.FirstName,
-		LastName: payload.LastName,
-		EmailAddress: payload.Email,
-		PhoneNumber: payload.PhoneNumber,
-		Gender: payload.Gender,
-		State: payload.State,
-		City: payload.City,
-		Street: payload.Street,
-		PostCode: payload.PostCode,
+		FirstName: req.FirstName,
+		LastName: req.LastName,
+		EmailAddress: req.Email,
+		PhoneNumber: req.PhoneNumber,
+		Gender: req.Gender,
+		State: req.State,
+		City: req.City,
+		Street: req.Street,
+		PostCode: req.PostCode,
 		IdentityType: store.IdentityTypeIndividual,
 		Category: store.CategoryCustomer,
 	}
@@ -104,21 +104,21 @@ func (s *svc) Register(ctx context.Context, payload RegisterDTO) (string, error)
 
 	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
 		if err := s.identities.Create(ctx, identity); err != nil {
-			return err
+			return fmt.Errorf("creating identity: %w", err)
 		}
 
 		if err := s.users.Create(ctx, user); err != nil {
-			return err
+			return fmt.Errorf("creating user: %w", err)
 		}
 
 		if err := s.users.CreateUserInvitation(ctx, hashToken, user.ID, time.Hour * 24 * 3); err != nil {
-			return err
+			return fmt.Errorf("creating user invitation: %w", err)
 		}
 
 		return nil
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("user creation failed: %w", err)
 	}
 
 	activationURL := fmt.Sprintf("http://localhost:4000/confirm/%s", plainToken)
@@ -127,33 +127,33 @@ func (s *svc) Register(ctx context.Context, payload RegisterDTO) (string, error)
 		FirstName string
 		ActivationURL string
 	} {
-		FirstName: payload.FirstName,
+		FirstName: req.FirstName,
 		ActivationURL: activationURL,
 	}
 
-	status, err := s.mailer.Send(mailer.UserWelcomeTemplate, payload.FirstName, payload.Email, vars, true)
+	status, err := s.mailer.Send(mailer.UserWelcomeTemplate, req.FirstName, req.Email, vars, true)
 	if err != nil {
 		s.logger.Errorw("error sending welcome email", "error", err)
 		
 		// delete user
 		err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
 			if err := s.users.Delete(ctx, user.ID); err != nil {
-				return err
+				return fmt.Errorf("deleting user: %w", err)
 			}
 
 			if err := s.users.DeleteUserInvitation(ctx, user.ID); err != nil {
-				return err
+				return fmt.Errorf("deleting user invitation: %w", err)
 			}
 
 			if err := s.identities.Delete(ctx, user.IdentityID); err != nil {
-				return err
+				return fmt.Errorf("deleting identity: %w", err)
 			}
 
 			return nil
 		})
 		if err != nil {
 			s.logger.Errorw("error deleting user", "error", err)
-			return "", err
+			return "", fmt.Errorf("user deletion failed: %w", err)
 		}
 
 		return "", err
@@ -164,71 +164,44 @@ func (s *svc) Register(ctx context.Context, payload RegisterDTO) (string, error)
 	return plainToken, nil
 }
 
-func (s *svc) Activate(ctx context.Context, token string) error {
-	return s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		user, err := s.users.GetUserFromInvitation(ctx, token) 
-		if err != nil {
-			return err
-		}
-
-		user.IsActive = true
-		if err := s.users.Update(ctx, user); err != nil {
-			return err
-		}
-
-		balance := &store.Balance{
-			ID: uuid.New(),
-			BalanceID: generateUUIDWithSuffix("bln"),
-			IdentityID: user.IdentityID,
-			LedgerID: "customer_ledger_id",
-			CreatedAt: time.Now(),
-		}
-		if err := s.balances.CreateBalance(ctx, balance); err != nil {
-			return err
-		}
-
-		if err := s.users.DeleteUserInvitation(ctx, user.ID); err != nil {
-			return err
-		}
-
-		return nil
-	})
+func (s *svc) ActivateCustomer(ctx context.Context, token string) error {
+	return s.activate(ctx, token, "customer_ledger_id", "customer")
 }
 
-func (s *svc) RegisterMerchant(ctx context.Context, payload RegisterMerchantDTO) (string, error) {
+func (s *svc) RegisterMerchant(ctx context.Context, req RegisterMerchantRequest) (string, error) {
 	user := &store.User{
 		ID: uuid.New(),
-		Email: payload.Email,
+		Email: req.Email,
 		IdentityID: uuid.New(),
 		IsActive: false,
 		RoleID: merchantRoleID,
 		CreatedAt: time.Now(),
 	}
 	
-	if err := user.Password.Set(payload.Password); err != nil {
+	if err := user.Password.Set(req.Password); err != nil {
 		return "", err
 	}
 
 	identity := &store.Identity{
 		ID: user.IdentityID,
-		FirstName: payload.FirstName,
-		LastName: payload.LastName,
-		EmailAddress: payload.Email,
-		PhoneNumber: payload.PhoneNumber,
-		Gender: payload.Gender,
-		State: payload.State,
-		City: payload.City,
-		Street: payload.Street,
-		PostCode: payload.PostCode,
+		FirstName: req.FirstName,
+		LastName: req.LastName,
+		EmailAddress: req.Email,
+		PhoneNumber: req.PhoneNumber,
+		Gender: req.Gender,
+		State: req.State,
+		City: req.City,
+		Street: req.Street,
+		PostCode: req.PostCode,
 		IdentityType: store.IdentityTypeOrganization,
 		Category: store.CategoryMerchant,
-		OrganizationName: payload.BusinessName,
+		OrganizationName: req.BusinessName,
 	}
 
 	merchant := &store.Merchant{
 		ID: uuid.New(),
 		UserID: user.ID,
-		BusinessName: payload.BusinessName,
+		BusinessName: req.BusinessName,
 		CreatedAt: time.Now(),
 	}
 
@@ -240,25 +213,25 @@ func (s *svc) RegisterMerchant(ctx context.Context, payload RegisterMerchantDTO)
 
 	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
 		if err := s.identities.Create(ctx, identity); err != nil {
-			return err
+			return fmt.Errorf("creating identity: %w", err)
 		}
 
 		if err := s.users.Create(ctx, user); err != nil {
-			return err
+			return fmt.Errorf("creating user: %w", err)
 		}
 
 		if err := s.users.CreateUserInvitation(ctx, hashToken, user.ID, time.Hour * 24 * 3); err != nil {
-			return err
+			return fmt.Errorf("creating user invitation: %w", err)
 		}
 
 		if err := s.merchants.Create(ctx, merchant); err != nil {
-			return err
+			return fmt.Errorf("creating merchant: %w", err)
 		}
 
 		return nil
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("merchant creation failed: %w", err)
 	}
 
 	activationURL := fmt.Sprintf("http://localhost:4000/confirm/%s", plainToken)
@@ -267,33 +240,37 @@ func (s *svc) RegisterMerchant(ctx context.Context, payload RegisterMerchantDTO)
 		FirstName string
 		ActivationURL string
 	} {
-		FirstName: payload.FirstName,
+		FirstName: req.FirstName,
 		ActivationURL: activationURL,
 	}
 
-	status, err := s.mailer.Send(mailer.UserWelcomeTemplate, payload.FirstName, payload.Email, vars, true)
+	status, err := s.mailer.Send(mailer.UserWelcomeTemplate, req.FirstName, req.Email, vars, true)
 	if err != nil {
 		s.logger.Errorw("error sending welcome email", "error", err)
 		
 		// delete user
 		err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
 			if err := s.users.Delete(ctx, user.ID); err != nil {
-				return err
+				return fmt.Errorf("deleting user: %w", err)
 			}
 
 			if err := s.users.DeleteUserInvitation(ctx, user.ID); err != nil {
-				return err
+				return fmt.Errorf("deleting user invitation: %w", err)
 			}
 
 			if err := s.identities.Delete(ctx, user.IdentityID); err != nil {
-				return err
+				return fmt.Errorf("deleting user identity: %w", err)
+			}
+
+			if err := s.merchants.Delete(ctx, merchant.ID); err != nil {
+				return fmt.Errorf("deleting merchant: %w", err)
 			}
 
 			return nil
 		})
 		if err != nil {
-			s.logger.Errorw("error deleting user", "error", err)
-			return "", err
+			s.logger.Errorw("error deleting merchant", "error", err)
+			return "", fmt.Errorf("merchant deletion failed: %w", err)
 		}
 
 		return "", err
@@ -305,44 +282,17 @@ func (s *svc) RegisterMerchant(ctx context.Context, payload RegisterMerchantDTO)
 }
 
 func (s *svc) ActivateMerchant(ctx context.Context, token string) error {
-	return s.txManager.WithTx(ctx, func(ctx context.Context) error {
-		user, err := s.users.GetUserFromInvitation(ctx, token) 
-		if err != nil {
-			return err
-		}
-
-		user.IsActive = true
-		if err := s.users.Update(ctx, user); err != nil {
-			return err
-		}
-
-		balance := &store.Balance{
-			ID: uuid.New(),
-			BalanceID: generateUUIDWithSuffix("bln"),
-			IdentityID: user.IdentityID,
-			LedgerID: "merchant_ledger_id",
-			CreatedAt: time.Now(),
-		}
-		if err := s.balances.CreateBalance(ctx, balance); err != nil {
-			return err
-		}
-
-		if err := s.users.DeleteUserInvitation(ctx, user.ID); err != nil {
-			return err
-		}
-
-		return nil
-	})
+	return s.activate(ctx, token, "merchant_ledger_id", "merchant")
 }
 
-func (s *svc) CreateToken(ctx context.Context, payload CreateUserTokenPayload) (string, error) {
-	user, err := s.users.GetByEmail(ctx, payload.Email)
+func (s *svc) CreateToken(ctx context.Context, req CreateUserTokenRequest) (string, error) {
+	user, err := s.users.GetByEmail(ctx, req.Email)
 	if err != nil {
-		return "", ErrUnauthorized // add some proper error handling
+		return "", ErrUnauthorized 
 	}
 
-	if err := user.Password.Compare(payload.Password); err != nil {
-		return "", ErrUnauthorized // add some proper error handling
+	if err := user.Password.Compare(req.Password); err != nil {
+		return "", ErrUnauthorized 
 	}
 
 	claims := jwt.MapClaims{
@@ -360,6 +310,43 @@ func (s *svc) CreateToken(ctx context.Context, payload CreateUserTokenPayload) (
 	}
 
 	return token, nil
+}
+
+func (s *svc) activate(ctx context.Context, token, ledgerID, label string) error {
+	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
+		user, err := s.users.GetUserFromInvitation(ctx, token)
+		if err != nil {
+			return fmt.Errorf("fetching user from invitations: %w", err)
+		}
+
+		user.IsActive = true
+		if err := s.users.Update(ctx, user); err != nil {
+			return fmt.Errorf("updating user: %w", err)
+		}
+
+		balance := &store.Balance{
+			ID: uuid.New(),
+			BalanceID: generateUUIDWithSuffix("bln"),
+			IdentityID: user.IdentityID,
+			LedgerID: ledgerID,
+			CreatedAt: time.Now(),
+		}
+
+		if err := s.balances.CreateBalance(ctx, balance); err != nil {
+			return fmt.Errorf("creating balance: %w", err)
+		}
+
+		if err := s.users.DeleteUserInvitation(ctx, user.ID); err != nil {
+			return fmt.Errorf("deleting user invitation: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("%s activation failed: %w", label, err)
+	}
+
+	return nil
 }
 
 func generateUUIDWithSuffix(module string) string {

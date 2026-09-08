@@ -12,6 +12,7 @@ import (
 type Merchants interface {
 	Create(ctx context.Context, merchant *Merchant) error
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*Merchant, error)
+	Delete(ctx context.Context, merchantID uuid.UUID) error
 }
 
 type Merchant struct {
@@ -78,4 +79,22 @@ func (s *MerchantStore) GetByUserID(ctx context.Context, userID uuid.UUID) (*Mer
 	}
 
 	return merchant, nil
+}
+
+func (s *MerchantStore) Delete(ctx context.Context, merchantID uuid.UUID) error {
+	dbtx := dbtx.ExtractTx(ctx, s.db)
+
+	query := `
+		DELETE FROM merchants WHERE id = $1
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
+
+	_, err := dbtx.ExecContext(ctx, query, merchantID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
