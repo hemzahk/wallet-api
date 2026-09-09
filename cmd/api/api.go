@@ -150,7 +150,7 @@ func (app *application) mount() http.Handler {
 												)
 			paymentHandler := payments.NewHandler(paymentService)
 			r.Post("/payments/checkout-sessions", authMiddleware.CheckRequiredRole("merchant", paymentHandler.CreateCheckoutSession))
-			r.Get("/payments/checkout-sessions/{token}", authMiddleware.CheckRequiredRole("customer", paymentHandler.GetCheckoutSession))
+			// r.Get("/payments/checkout-sessions/{token}", authMiddleware.CheckRequiredRole("customer", paymentHandler.GetCheckoutSession))
 
 			r.Group(func(r chi.Router) {
 				r.Use(idempotencyMiddleware.Wrap)

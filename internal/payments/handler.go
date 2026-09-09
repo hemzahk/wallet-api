@@ -1,7 +1,6 @@
 package payments
 
 import (
-	"math/big"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -19,25 +18,25 @@ func NewHandler(service Service) *handler {
 	}
 }
 
-type CheckoutSessionDTO struct {
+type CheckoutSessionRequest struct {
 	Amount string `json:"amount" validate:"required"`
 }
 
 func (h *handler) CreateCheckoutSession(w http.ResponseWriter, r *http.Request) {
-	var payload CheckoutSessionDTO
-	if err := json.ReadJSON(w, r, &payload); err != nil {
+	var req CheckoutSessionRequest
+	if err := json.ReadJSON(w, r, &req); err != nil {
 		json.InternalServerError(w, r, err)
 		return
 	}
 
-	if err := json.Validate.Struct(payload); err != nil {
+	if err := json.Validate.Struct(req); err != nil {
 		json.BadRequestResponse(w, r, err)
 		return
 	}
 
 	user := r.Context().Value("user").(*store.User)
 
-	token, err := h.service.CreateCheckoutSession(r.Context(), payload, user)
+	token, err := h.service.CreateCheckoutSession(r.Context(), req, user)
 	if err != nil {
 		json.InternalServerError(w, r, err)
 		return
@@ -54,7 +53,28 @@ func (h *handler) CreateCheckoutSession(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func (h *handler) GetCheckoutSession(w http.ResponseWriter, r *http.Request) {
+func (h *handler) Pay(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	user := r.Context().Value("user").(*store.User)
+
+	if err := h.service.Pay(r.Context(), token, user); err != nil {
+		switch err{
+		case store.ErrCheckoutSessionNotFound:
+			json.NotFoundResponse(w,r,err)
+		case ErrInsufficientBalance:
+			json.JsonResponse(w, http.StatusPaymentRequired, err.Error())
+		default:
+			json.InternalServerError(w, r, err)
+		}
+		return		
+	}
+
+	if err := json.JsonResponse(w, http.StatusOK, "success"); err != nil {
+		json.InternalServerError(w, r, err)
+	}
+}
+
+/*func (h *handler) GetCheckoutSession(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 
 	session, err := h.service.GetCheckoutSession(r.Context(), token)
@@ -80,29 +100,4 @@ func (h *handler) GetCheckoutSession(w http.ResponseWriter, r *http.Request) {
 	if err := json.JsonResponse(w, http.StatusOK, res); err != nil {
 		json.InternalServerError(w, r, err)
 	}
-}
-
-type PaymentDTO struct {
-	MerchantID string `json:"merchant_id" validate:"required"`
-	Amount string `json:"amount" validate:"required"`
-	Reference string `json:"reference" validate:"required"`
-}
-
-func (h *handler) Pay(w http.ResponseWriter, r *http.Request) {
-	token := chi.URLParam(r, "token")
-	user := r.Context().Value("user").(*store.User)
-
-	if err := h.service.Pay(r.Context(), token, user); err != nil {
-		switch err{
-		case store.ErrCheckoutSessionNotFound:
-			json.NotFoundResponse(w,r,err)
-		default:
-			json.InternalServerError(w, r, err)
-		}
-		return		
-	}
-
-	if err := json.JsonResponse(w, http.StatusOK, "success"); err != nil {
-		json.InternalServerError(w, r, err)
-	}
-}
+}*/

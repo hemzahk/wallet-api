@@ -20,8 +20,8 @@ var (
 )
 
 type Service interface {
-	CreateCheckoutSession(ctx context.Context, payload CheckoutSessionDTO, user *store.User)(string, error)
-	GetCheckoutSession(ctx context.Context, token string) (*store.CheckoutSession, error)
+	CreateCheckoutSession(ctx context.Context, req CheckoutSessionRequest, user *store.User)(string, error)
+	// GetCheckoutSession(ctx context.Context, token string) (*store.CheckoutSession, error)
 	Pay(ctx context.Context, token string, user *store.User) error
 }
 
@@ -47,15 +47,15 @@ func NewService(checkoutSessions store.CheckoutSessions,
 	}
 }
 
-func (s *svc) CreateCheckoutSession(ctx context.Context, payload CheckoutSessionDTO, user *store.User) (string, error) {
-	amount, err := amountInCentimes(payload.Amount)
+func (s *svc) CreateCheckoutSession(ctx context.Context, req CheckoutSessionRequest, user *store.User) (string, error) {
+	amount, err := amountInCentimes(req.Amount)
 	if err != nil {
 		return "", err
 	}
 
 	merchant, err := s.merchants.GetByUserID(ctx, user.ID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("fetching merchant: %w", err)
 	}
 
 	plainToken := uuid.New().String()
@@ -63,7 +63,7 @@ func (s *svc) CreateCheckoutSession(ctx context.Context, payload CheckoutSession
 	hash := sha256.Sum256([]byte(plainToken))
 	hashToken := hex.EncodeToString(hash[:])	
 	
-	session := &store.CheckoutSession{
+	session := &store.CheckoutSession{ // add status...
 		ID: uuid.New(),
 		Token: hashToken,
 		MerchantID: merchant.ID,
@@ -73,26 +73,17 @@ func (s *svc) CreateCheckoutSession(ctx context.Context, payload CheckoutSession
 	}
 
 	if err := s.checkoutSessions.Create(ctx, session); err != nil {
-		return "", err
+		return "", fmt.Errorf("creating checkout session: %w", err)
 	}
 
 	return plainToken, nil
-}
-
-func (s *svc) GetCheckoutSession(ctx context.Context, token string) (*store.CheckoutSession, error) {
-	session, err := s.checkoutSessions.GetByToken(ctx, token)
-	if err != nil {
-		return nil, err
-	}
-
-	return session, nil
 }
 
 func (s *svc) Pay(ctx context.Context, token string, user *store.User) error {
 	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
 		session, err := s.checkoutSessions.GetByToken(ctx, token)
 		if err != nil {
-			return err
+			return fmt.Errorf("fetching checkout session: %w",err)
 		}
 
 		sourceBalance, err := s.balances.GetByUserID(ctx, user.ID)
@@ -166,23 +157,23 @@ func (s *svc) Pay(ctx context.Context, token string, user *store.User) error {
 
 		// update customer balances:
 		if err := s.balances.UpdateBalance(ctx, sourceBalance); err != nil {
-			return err
+			return fmt.Errorf("updating balance: %w", err)
 		}
 
 		// update merchant balance:
 		if err := s.balances.UpdateBalance(ctx, merchantBalance); err != nil {
-			return err
+			return fmt.Errorf("updating balance: %w", err)
 		}
 
 		// update @Revenue balance
 		if err := s.balances.UpdateBalance(ctx, revenueBalance); err != nil {
-			return err
+			return fmt.Errorf("updating balance: %w", err)
 		}
 
 		return nil
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("payment failed: %w", err)
 	}
 	
 	return nil
@@ -208,3 +199,12 @@ func calculateFeeCeil(amount *big.Int) *big.Int {
 	fee.Div(fee, big.NewInt(1000))
 	return fee
 }
+
+/*func (s *svc) GetCheckoutSession(ctx context.Context, token string) (*store.CheckoutSession, error) {
+	session, err := s.checkoutSessions.GetByToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	return session, nil
+}*/
