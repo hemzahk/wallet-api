@@ -160,9 +160,6 @@ func (w *Worker) refund(ctx context.Context, request *store.RefundRequest) error
 	if err := w.transactions.Record(ctx, refundTransaction); err != nil {
 		return fmt.Errorf("recording refund transaction: %w", err)
 	}
-	if err := w.transactions.MarkRefunded(ctx, transaction.Reference); err != nil {
-		return fmt.Errorf("marking original transaction refunded: %w", err)
-	}
 
 	return nil
 }

@@ -95,10 +95,16 @@ func (s *RefundRequestStore) MarkFailed(ctx context.Context, id uuid.UUID, descr
 
 func (s *RefundRequestStore) updateStatus(ctx context.Context, id uuid.UUID, status string, description string) error {
 	dbtx := dbtx.ExtractTx(ctx, s.db)
-	_, err := dbtx.ExecContext(ctx, `
+
+	query := `
 		UPDATE refund_requests
 		SET status = $1, description = CASE WHEN $2 = '' THEN description ELSE $2 END
 		WHERE id = $3
-	`, status, description, id)
-	return err
+	`
+	_, err := dbtx.ExecContext(ctx, query, status, description, id)
+	if err != nil {
+		return err
+	}
+	
+	return nil
 }

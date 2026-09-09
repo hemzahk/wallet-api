@@ -13,7 +13,6 @@ import (
 type Transactions interface {
 	Record(ctx context.Context, transaction *Transaction) error
 	GetByRef(ctx context.Context, reference string) (*Transaction, error)
-	MarkRefunded(ctx context.Context, reference string) error
 	GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error)
 }
 
@@ -108,16 +107,6 @@ func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Tra
 	transaction.PreciseAmount = amountAsBigInt
 
 	return transaction, nil
-}
-
-func (s *TransactionStore) MarkRefunded(ctx context.Context, reference string) error {
-	dbtx := dbtx.ExtractTx(ctx, s.db)
-	_, err := dbtx.ExecContext(ctx, `
-		UPDATE transactions
-		SET status = 'refunded'
-		WHERE reference = $1 AND status = 'applied'
-	`, reference)
-	return err
 }
 
 func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID) ([]Transaction, error) {
