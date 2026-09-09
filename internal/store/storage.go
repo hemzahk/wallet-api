@@ -12,6 +12,7 @@ type Storage struct {
 	Transactions Transactions
 	Merchants Merchants
 	CheckoutSessions CheckoutSessions
+	RefundRequests RefundRequests
 	IdempotencyKeys IdempotencyKeys
 	WebhookEventIDs WebhookEventIDs
 }
@@ -24,6 +25,7 @@ func NewStorage(db *sql.DB) Storage {
 		Balances: &BalanceStore{db},
 		Merchants: &MerchantStore{db},
 		CheckoutSessions: &CheckoutSessionStore{db},
+		RefundRequests: &RefundRequestStore{db},
 		IdempotencyKeys: &IdempotencyKeyStore{db},
 		WebhookEventIDs: &WebhookEventIDStore{db},
 		Roles: &RoleStore{db},

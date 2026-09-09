@@ -22,15 +22,15 @@ type Transactions interface {
 }
 
 type Transaction struct {
-	ID uuid.UUID `json:"id"`
+	ID                uuid.UUID `json:"id"`
 	ParentTransaction uuid.UUID `json:"parent_transaction"`
-	PreciseAmount *big.Int `json:"precise_amount"` 
-	Reference string `json:"reference"`
-	Source string `json:"source"`
-	Destination string `json:"destination"`
-	Status string `json:"status"`
-	Description string `json:"description"`
-	CreatedAt time.Time `json:"created_at"`
+	PreciseAmount     *big.Int  `json:"precise_amount"`
+	Reference         string    `json:"reference"`
+	Source            string    `json:"source"`
+	Destination       string    `json:"destination"`
+	Status            string    `json:"status"`
+	Description       string    `json:"description"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 type TransactionStore struct {
@@ -79,6 +79,7 @@ func (s *TransactionStore) Record(ctx context.Context, transaction *Transaction)
 }
 
 func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Transaction, error) {
+	dbtx := dbtx.ExtractTx(ctx, s.db)
 	query := `
 		SELECT id, parent_transaction, reference, precise_amount, source, destination, status, description, created_at
 		FROM transactions
@@ -90,7 +91,7 @@ func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Tra
 
 	transaction := &Transaction{}
 	var rawAmount int64
-	err := s.db.QueryRowContext(ctx, query, reference).Scan(
+	err := dbtx.QueryRowContext(ctx, query, reference).Scan(
 		&transaction.ID,
 		&transaction.ParentTransaction,
 		&transaction.Reference,
@@ -98,7 +99,7 @@ func (s *TransactionStore) GetByRef(ctx context.Context, reference string) (*Tra
 		&transaction.Source,
 		&transaction.Destination,
 		&transaction.Status,
-		&transaction.Description, 
+		&transaction.Description,
 		&transaction.CreatedAt,
 	)
 	if err != nil {
@@ -141,7 +142,7 @@ func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.
 			&t.ParentTransaction,
 			&t.Reference,
 			&rawAmount,
-			&t.Source, 
+			&t.Source,
 			&t.Destination,
 			&t.Status,
 			&t.Description, 
@@ -157,6 +158,3 @@ func (s *TransactionStore) GetByIdentityID(ctx context.Context, identityID uuid.
 
 	return transactions, nil
 }
-
-
-

@@ -182,6 +182,7 @@ func (s *BalanceStore) GetByUserID(ctx context.Context, userID uuid.UUID) (*Bala
 }
 
 func (s *BalanceStore) GetByBalanceID(ctx context.Context, balanceID string) (*Balance, error) {
+	dbtx := dbtx.ExtractTx(ctx, s.db)
 	query := `
 		SELECT id, balance_id, balance, inflight_credit_balance, inflight_debit_balance, identity_id, ledger_id, currency, version, created_at
 		FROM balances
@@ -194,7 +195,7 @@ func (s *BalanceStore) GetByBalanceID(ctx context.Context, balanceID string) (*B
 	balance := &Balance{}
 	var rawBalance, inflightCreditBalance, inflightDebitBalance int64
 
-	err := s.db.QueryRowContext(ctx, query, balanceID).Scan(
+	err := dbtx.QueryRowContext(ctx, query, balanceID).Scan(
 		&balance.ID,
 		&balance.BalanceID,
 		&rawBalance,

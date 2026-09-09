@@ -1,0 +1,1 @@
+ALTER TABLE transactions DROP CONSTRAINT uq_transactions_reference;

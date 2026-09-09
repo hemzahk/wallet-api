@@ -1,6 +1,7 @@
 package payments
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -74,6 +75,60 @@ func (h *handler) Pay(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type RefundRequest struct {
+	TransactionRef string `json:"transaction_ref" validate:"required"`
+}
+
+func (h *handler) RequestRefund(w http.ResponseWriter, r *http.Request) {
+	var req RefundRequest
+	if err := json.ReadJSON(w, r, &req); err != nil {
+		json.InternalServerError(w, r, err)
+		return
+	}
+
+	if err := json.Validate.Struct(req); err != nil {
+		json.BadRequestResponse(w, r, err)
+		return
+	}
+	
+	if err := h.service.RequestRefund(r.Context(), req); err != nil {
+		switch {
+		case errors.Is(err, ErrNonRefundable):
+			json.JsonResponse(w, http.StatusUnprocessableEntity, err.Error())
+		default:
+			json.InternalServerError(w, r, err)
+		}
+		
+		return
+	}
+
+	if err := json.JsonResponse(w, http.StatusAccepted, map[string]string{"status": "pending"}); err != nil {
+		json.InternalServerError(w, r, err)
+	}	
+}
+
+// func (h *handler) Refund(w http.ResponseWriter, r *http.Request) {
+// 	var req RefundDTO
+// 	if err := json.ReadJSON(w, r, &payload); err != nil {
+// 		json.InternalServerError(w, r, err)
+// 		return
+// 	}
+
+// 	if err := json.Validate.Struct(payload); err != nil {
+// 		json.BadRequestResponse(w, r, err)
+// 		return
+// 	}
+
+// 	if err := h.service.Refund(r.Context(), payload); err != nil {
+// 		json.InternalServerError(w, r, err)
+// 		return
+// 	}
+
+// 	if err := json.JsonResponse(w, http.StatusOK, "success"); err != nil {
+// 		json.InternalServerError(w, r, err)
+// 	}
+// }
+
 /*func (h *handler) GetCheckoutSession(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 
@@ -101,3 +156,4 @@ func (h *handler) Pay(w http.ResponseWriter, r *http.Request) {
 		json.InternalServerError(w, r, err)
 	}
 }*/
+

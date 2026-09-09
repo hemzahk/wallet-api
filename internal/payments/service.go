@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,12 +18,15 @@ import (
 var (
 	ErrInvalidAmount = errors.New("invalid DZD amount")
 	ErrInsufficientBalance = errors.New("insufficient balance")
+	ErrNonRefundable = errors.New("transaction is non-refundable")
+	ErrNonRefundableExpired = errors.New("transaction is non-refundable expired")
 )
 
 type Service interface {
 	CreateCheckoutSession(ctx context.Context, req CheckoutSessionRequest, user *store.User)(string, error)
 	// GetCheckoutSession(ctx context.Context, token string) (*store.CheckoutSession, error)
 	Pay(ctx context.Context, token string, user *store.User) error
+	RequestRefund(ctx context.Context, req RefundRequest) error
 }
 
 type svc struct {
@@ -30,6 +34,7 @@ type svc struct {
 	merchants store.Merchants
 	transactions store.Transactions
 	balances store.Balances
+	refundRequests store.RefundRequests
 	txManager dbtx.TxManager
 }
 
@@ -37,12 +42,14 @@ func NewService(checkoutSessions store.CheckoutSessions,
 				merchants store.Merchants,
 				transactions store.Transactions,
 				balances store.Balances,
+				refundRequests store.RefundRequests,
 				txManager dbtx.TxManager) Service{
 	return &svc{
 		checkoutSessions: checkoutSessions,
 		merchants: merchants,
 		transactions :transactions,
 		balances: balances,
+		refundRequests: refundRequests,
 		txManager: txManager,
 	}
 }
@@ -179,6 +186,51 @@ func (s *svc) Pay(ctx context.Context, token string, user *store.User) error {
 	return nil
 }
 
+func (s *svc) RequestRefund(ctx context.Context, req RefundRequest) error {
+	// for now only payments are refundable.
+	if !isPayment(req.TransactionRef) {
+		return ErrNonRefundable
+	}
+
+	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
+		// fetch transaction
+		transaction, err := s.transactions.GetByRef(ctx, req.TransactionRef)
+		if err != nil {
+			return fmt.Errorf("fetching transaction: %w", err)
+		}
+
+		// check that transaction is refundable (status == applied)
+		if transaction.Status != "applied" {
+			return ErrNonRefundable
+		}
+
+		// refundable within 30 days:
+		if time.Since(transaction.CreatedAt) > time.Hour*24*30 {
+			return ErrNonRefundableExpired
+		}
+
+		// record the refund request
+		refundRequest := &store.RefundRequest{
+			ID: uuid.New(),
+			TransactionRef: req.TransactionRef,
+			Status: "pending",
+			Description: "don't want to use the service anymore",
+			CreatedAt: time.Now(),
+		}
+
+		if err := s.refundRequests.Create(ctx, refundRequest); err != nil {
+			return fmt.Errorf("recording refund request: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("refund request failed: %w", err)
+	}
+
+	return nil
+}
+
 func amountInCentimes(amount string) (*big.Int, error) {
 	rat, ok := new(big.Rat).SetString(amount)
 	if !ok {
@@ -199,6 +251,77 @@ func calculateFeeCeil(amount *big.Int) *big.Int {
 	fee.Div(fee, big.NewInt(1000))
 	return fee
 }
+
+func isPayment(ref string) bool {
+	refArr := strings.Split(ref, "_")
+
+	if refArr[0] == "payment" {
+		return true
+	}
+
+	return false
+}
+
+// func (s *svc) Refund(ctx context.Context, payload RefundDTO) error {
+// 	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
+// 		transaction, err := s.transactions.GetByRef(ctx, payload.TransactionRef)
+// 		if err != nil {
+// 			return fmt.Errorf("fetching transaction: %w", err)
+// 		}
+
+// 		merchantBalance, err := s.balances.GetByBalanceID(ctx, transaction.Destination)
+// 		if err != nil {
+// 			return fmt.Errorf("fetching merchant balance: %w", err)
+// 		}
+
+// 		customerBalance, err := s.balances.GetByBalanceID(ctx, transaction.Source)
+// 		if err != nil {
+// 			return fmt.Errorf("fetching customer balance: %w", err)
+// 		}
+
+// 		// check merchant has sufficient balance:
+// 		if merchantBalance.Balance.Cmp(transaction.PreciseAmount) < 0 {
+// 			return ErrInsufficientBalance
+// 		}
+
+// 		// debit merchant:
+// 		merchantBalance.Balance.Sub(merchantBalance.Balance, transaction.PreciseAmount)
+
+// 		// credit merchant:
+// 		customerBalance.Balance.Add(customerBalance.Balance, transaction.PreciseAmount)
+
+// 		// update balances:
+// 		if err := s.balances.UpdateBalance(ctx, merchantBalance); err != nil {
+// 			return fmt.Errorf("updating balance: %w", err)
+// 		}
+
+// 		if err := s.balances.UpdateBalance(ctx, customerBalance); err != nil {
+// 			return fmt.Errorf("updating balance: %w", err)
+// 		}
+
+// 		// record transaction:
+// 		refundTransaction := &store.Transaction{
+// 			ID: uuid.New(),
+// 			PreciseAmount: transaction.PreciseAmount,
+// 			Reference: fmt.Sprintf("%s_refund", transaction.Reference),
+// 			Source: transaction.Destination,
+// 			Destination: transaction.Source,
+// 			Status: "applied",
+// 			Description: "refund",
+// 			CreatedAt: time.Now(),
+// 		}
+
+// 		if err := s.transactions.Record(ctx, refundTransaction); err != nil {
+// 			return fmt.Errorf("recording transaction: %w", err)
+// 		}
+// 		return nil
+// 	})
+// 	if err != nil {
+// 		return fmt.Errorf("refund failed: %w", err)
+// 	}
+
+// 	return nil
+// }
 
 /*func (s *svc) GetCheckoutSession(ctx context.Context, token string) (*store.CheckoutSession, error) {
 	session, err := s.checkoutSessions.GetByToken(ctx, token)
