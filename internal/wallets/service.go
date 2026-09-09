@@ -15,7 +15,7 @@ import (
 
 var (
 	MaxTopupAmount *big.Int = big.NewInt(10000000)
-	MaxWithdrawalAmount *big.Int = big.NewInt(5000000)
+	MaxWithdrawalAmount *big.Int = big.NewInt(5000000) // daily maximum, improve the logic later...
 	MaxTransferAmount *big.Int = big.NewInt(5000000)
 
 	ErrInvalidAmount = errors.New("invalid DZD amount")
@@ -31,6 +31,8 @@ var (
 
 	ErrInsufficientBalance = errors.New("insufficient balance")
 
+	ErrSelfTransfer = errors.New("you cannot transfer funds to your own wallet")
+
 	ErrGatewayFailure = errors.New("gateway error: failed")
 
 	ErrWebhookAlreadyProcessed = errors.New("webhook already processed")
@@ -38,11 +40,13 @@ var (
 
 
 type Service interface {
-	Topup(ctx context.Context, payload TopupDTO, user *store.User) (*gateway.GatewaySession,error)
-	TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error
-	Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.User) (*gateway.PayoutSession, error)
-	PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
-	Transfer(ctx context.Context, payload TransferDTO, user *store.User) error
+	Topup(ctx context.Context, req TopupRequest, user *store.User) (*gateway.GatewaySession,error)
+	TopupWebhook(ctx context.Context, payload TopupWebhookPayload) error
+
+	Withdraw(ctx context.Context, req WithdrawalRequest, user *store.User) (*gateway.PayoutSession, error)
+	PayoutWebhook(ctx context.Context, payload PayoutWebhookPayload) error
+
+	Transfer(ctx context.Context, req TransferRequest, user *store.User) error
 	GetWallet(ctx context.Context, userID uuid.UUID) (*big.Float, error)
 	GetTransactionHistory(ctx context.Context, identityID uuid.UUID) ([]Transaction, error)
 }
@@ -69,8 +73,8 @@ func NewService(transactions store.Transactions,
 	}
 }
 
-func (s *svc) Topup(ctx context.Context, payload TopupDTO, user *store.User) (*gateway.GatewaySession, error) {
-	amount, err := amountInCentimes(payload.Amount)
+func (s *svc) Topup(ctx context.Context, req TopupRequest, user *store.User) (*gateway.GatewaySession, error) {
+	amount, err := amountInCentimes(req.Amount)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +83,7 @@ func (s *svc) Topup(ctx context.Context, payload TopupDTO, user *store.User) (*g
 		return nil, ErrMaxTopupAmountExceeded
 	} 
 		
-	session, err := s.gateway.InitiatePayment(ctx, amount)
+	session, _ := s.gateway.InitiatePayment(ctx, amount) // no errors at this stage...
 
 	ref := fmt.Sprintf("topup_%s", session.GatewayRef)
 
@@ -112,7 +116,7 @@ func (s *svc) Topup(ctx context.Context, payload TopupDTO, user *store.User) (*g
 		destinationBalance.InflightCreditBalance.Add(destinationBalance.InflightCreditBalance, amount)
 
 		if err := s.balances.UpdateBalance(ctx, destinationBalance); err != nil {
-			return err
+			return fmt.Errorf("updating balance: %w", err)
 		}
 
 		return nil
@@ -124,7 +128,7 @@ func (s *svc) Topup(ctx context.Context, payload TopupDTO, user *store.User) (*g
 	return &session, nil
 }
 
-func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
+func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookPayload) error {
 	ref := fmt.Sprintf("topup_%s", payload.GatewayRef)
 
 	parentTransaction, err := s.transactions.GetByRef(ctx, ref)
@@ -207,8 +211,8 @@ func (s *svc) TopupWebhook(ctx context.Context, payload TopupWebhookDTO) error {
 	return nil
 }
 
-func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.User) (*gateway.PayoutSession, error) {
-	amount, err := amountInCentimes(payload.Amount)
+func (s *svc) Withdraw(ctx context.Context, req WithdrawalRequest, user *store.User) (*gateway.PayoutSession, error) {
+	amount, err := amountInCentimes(req.Amount)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +264,7 @@ func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.U
 		sourceBalance.InflightDebitBalance.Add(sourceBalance.InflightDebitBalance, amount)
 
 		if err := s.balances.UpdateBalance(ctx, sourceBalance); err != nil {
-			return err
+			return fmt.Errorf("updating balance: %w", err)
 		}
 
 		return nil
@@ -272,7 +276,7 @@ func (s *svc) Withdraw(ctx context.Context, payload WithdrawalDTO, user *store.U
 	return &session, nil
 }
 
-func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error {
+func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookPayload) error {
 	ref := fmt.Sprintf("withdrawal_%s", payload.GatewayRef)
 	parentTransaction, err := s.transactions.GetByRef(ctx, ref)
 	if err != nil {
@@ -354,8 +358,8 @@ func (s *svc) PayoutWebhook(ctx context.Context, payload PayoutWebhookDTO) error
 	return nil 
 }
 
-func (s *svc) Transfer(ctx context.Context, payload TransferDTO, user *store.User) error {
-	amount, err := amountInCentimes(payload.Amount)
+func (s *svc) Transfer(ctx context.Context, req TransferRequest, user *store.User) error {
+	amount, err := amountInCentimes(req.Amount)
 	if err != nil {
 		return err
 	}
@@ -375,14 +379,14 @@ func (s *svc) Transfer(ctx context.Context, payload TransferDTO, user *store.Use
 			return  ErrInsufficientBalance
 		}
 
-		destinationBalance, err := s.balances.GetByEmail(ctx, payload.Email)
+		destinationBalance, err := s.balances.GetByEmail(ctx, req.Email)
 		if err != nil {
 			return fmt.Errorf("fetching destination balance: %w", err)
 		}
 
 		// check source != destination
 		if sourceBalance.BalanceID == destinationBalance.BalanceID {
-			return fmt.Errorf("you can't transfer money to yourself")
+			return ErrSelfTransfer
 		}
 
 		// preventing direct money transfers to merchants (customer -> merchant)
@@ -395,12 +399,12 @@ func (s *svc) Transfer(ctx context.Context, payload TransferDTO, user *store.Use
 
 		transaction := &store.Transaction{
 			ID: uuid.New(),
-			Reference: payload.Reference, // TODO: extract from idempotency header directly
+			Reference: req.Reference, // TODO: extract from idempotency header directly
 			PreciseAmount: amount,
 			Source: sourceBalance.BalanceID,
 			Destination: destinationBalance.BalanceID,
 			Status: "applied",
-			Description: "P2P Transfer",
+			Description: "p2p transfer",
 			CreatedAt: time.Now(),
 		}
 
@@ -409,11 +413,11 @@ func (s *svc) Transfer(ctx context.Context, payload TransferDTO, user *store.Use
 		}
 
 		if err := s.balances.UpdateBalance(ctx, sourceBalance); err != nil {
-			return err
+			return fmt.Errorf("updating source balance: %w", err)
 		}
 
 		if err := s.balances.UpdateBalance(ctx, destinationBalance); err != nil {
-			return err
+			return fmt.Errorf("updating destination balance: %w", err)
 		}
 
 		return nil
@@ -428,7 +432,7 @@ func (s *svc) Transfer(ctx context.Context, payload TransferDTO, user *store.Use
 func (s *svc) GetWallet(ctx context.Context, userID uuid.UUID) (*big.Float, error) {
 	balance, err := s.balances.GetByUserID(ctx, userID); 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fetching wallet: %w", err)
 	}
 
 	dzdBalance := toFloat(balance.Balance)
@@ -447,12 +451,12 @@ type Transaction struct {
 func (s *svc) GetTransactionHistory(ctx context.Context, identityID uuid.UUID) ([]Transaction, error) {
 	balance, err := s.balances.GetByIdentityID(ctx, identityID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fetching balance: %w", err)
 	}
 
 	transactions, err := s.transactions.GetByIdentityID(ctx, identityID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fetching transactions: %w", err)
 	}
 
 	var txns []Transaction

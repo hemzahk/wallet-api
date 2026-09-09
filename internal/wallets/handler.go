@@ -23,56 +23,69 @@ func NewHandler(service Service, gateway gateway.PaymentGateway) *handler {
 	}
 }
 
-type TopupDTO struct {
+type TopupRequest struct {
 	Amount string `json:"amount" validate:"required"`
 }
 
-type WithdrawalDTO struct {
+type WithdrawalRequest struct {
 	Number     string `json:"number"`
 	BankName   string  `json:"bank_name"`
 	Amount string `json:"amount" validate:"required"`
 	Reference string `json:"reference" validate:"required"`
 }
 
-type PayoutWebhookDTO struct {
+type PayoutWebhookPayload struct {
 	EventID  string `json:"event_id"`
 	SourceID string `json:"source_id"` // for our PSP 645b44fb-314f-4e34-8106-17b09cc9660a
-	GatewayRef string          `json:"gateway_ref"`
-	Status     string          `json:"status"`
-	Amount     string 		   `json:"amount"`
+	GatewayRef string `json:"gateway_ref"`
+	Status     string `json:"status"`
+	Amount     string `json:"amount"`
+}
+
+type TransferRequest struct {
+	Email string `json:"email" validate:"required,email"`
+	Amount string `json:"amount" validate:"required"`
+	Reference string `json:"reference" validate:"required"`
 }
 
 func (h *handler) Topup(w http.ResponseWriter, r *http.Request) {
-	var payload TopupDTO
-	if err := json.ReadJSON(w, r, &payload); err != nil {
+	var req TopupRequest
+	if err := json.ReadJSON(w, r, &req); err != nil {
 		json.InternalServerError(w, r, err)
 		return
 	}
 
-	if err := json.Validate.Struct(payload); err != nil {
+	if err := json.Validate.Struct(req); err != nil {
 		json.BadRequestResponse(w, r, err)
 		return
 	}
 
 	user := r.Context().Value("user").(*store.User)
 
-	session, err := h.service.Topup(r.Context(), payload, user)
+	session, err := h.service.Topup(r.Context(), req, user)
 	if err != nil {
-		json.InternalServerError(w, r, err)
+		switch {
+		case errors.Is(err, ErrMaxTopupAmountExceeded):
+			json.JsonResponse(w, http.StatusUnprocessableEntity, err)
+		case errors.Is(err, store.ErrBalanceNotFound):
+			json.NotFoundResponse(w, r, err)
+		default: 
+			json.InternalServerError(w, r, err)
+		}
 		return
 	}
 
-	if err := json.JsonResponse(w, http.StatusOK, session); err != nil {
+	if err := json.JsonResponse(w, http.StatusAccepted, session); err != nil {
 		json.InternalServerError(w, r, err)
 	}
 }
 
-type TopupWebhookDTO struct {
+type TopupWebhookPayload struct {
 	EventID  string `json:"event_id"`
 	SourceID string `json:"source_id"` // for our PSP 645b44fb-314f-4e34-8106-17b09cc9660a
-	GatewayRef string          `json:"gateway_ref"`
-	Status     string          `json:"status"`
-	Amount     string 		   `json:"amount"`
+	GatewayRef string `json:"gateway_ref"`
+	Status     string `json:"status"`
+	Amount     string `json:"amount"`
 }
 
 func (h *handler) TopupWebhook(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +106,7 @@ func (h *handler) TopupWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload TopupWebhookDTO
+	var payload TopupWebhookPayload
 	if err := jsonutils.Unmarshal(rawBody, &payload); err != nil {
 		json.WriteJSONError(w, http.StatusBadRequest, "INVALID_PAYLOAD: malformed webhook payload")
 		return
@@ -127,7 +140,7 @@ func (h *handler) PayoutWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload PayoutWebhookDTO
+	var payload PayoutWebhookPayload
 	if err := jsonutils.Unmarshal(rawBody, &payload); err != nil {
 		json.WriteJSONError(w, http.StatusBadRequest, "INVALID_PAYLOAD: malformed webhook payload")
 		return
@@ -144,22 +157,32 @@ func (h *handler) PayoutWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) Withdraw(w http.ResponseWriter, r *http.Request) {
-	var payload WithdrawalDTO
-	if err := json.ReadJSON(w,r,&payload); err != nil {
+	var req WithdrawalRequest
+	if err := json.ReadJSON(w,r,&req); err != nil {
 		json.InternalServerError(w,r,err)
 		return
 	}
 
-	if err := json.Validate.Struct(payload); err != nil {
+	if err := json.Validate.Struct(req); err != nil {
 		json.BadRequestResponse(w, r, err)
 		return
 	}
 
 	user := r.Context().Value("user").(*store.User)
 
-	session,  err := h.service.Withdraw(r.Context(), payload, user)
+	session,  err := h.service.Withdraw(r.Context(), req, user)
 	if err != nil {
-		json.InternalServerError(w,r,err)
+		switch {
+		case errors.Is(err, ErrMaxWithdrawalAmountExceeded):
+			json.JsonResponse(w, http.StatusUnprocessableEntity, err.Error())
+		case errors.Is(err, store.ErrBalanceNotFound):
+			json.NotFoundResponse(w, r, err)
+		case errors.Is(err, ErrInsufficientBalance):
+			json.JsonResponse(w, http.StatusPaymentRequired, err.Error())
+		default:
+			json.InternalServerError(w,r,err)
+		}
+		
 		return
 	}
 
@@ -168,28 +191,34 @@ func (h *handler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type TransferDTO struct {
-	Email string `json:"email" validate:"required,email"`
-	Amount string `json:"amount" validate:"required"`
-	Reference string `json:"reference" validate:"required"`
-}
-
 func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
-	var payload TransferDTO
-	if err := json.ReadJSON(w, r, &payload); err != nil {
+	var req TransferRequest
+	if err := json.ReadJSON(w, r, &req); err != nil {
 		json.InternalServerError(w, r, err)
 		return
 	}
 
-	if err := json.Validate.Struct(payload); err != nil {
+	if err := json.Validate.Struct(req); err != nil {
 		json.BadRequestResponse(w, r, err)
 		return
 	}
 
 	user := r.Context().Value("user").(*store.User)
 
-	if err := h.service.Transfer(r.Context(), payload, user); err != nil {
-		json.InternalServerError(w, r, err)
+	if err := h.service.Transfer(r.Context(), req, user); err != nil {
+		switch {
+		case errors.Is(err, ErrMaxTransferAmountExceeded):
+			json.JsonResponse(w, http.StatusUnprocessableEntity, err.Error())
+		case errors.Is(err, ErrInsufficientBalance): 
+			json.JsonResponse(w, http.StatusPaymentRequired, err.Error())
+		case errors.Is(err, ErrSelfTransfer):
+			json.JsonResponse(w, http.StatusUnprocessableEntity, err.Error())
+		case errors.Is(err, store.ErrBalanceNotFound):
+			json.NotFoundResponse(w, r, err)
+		default:
+			json.InternalServerError(w, r, err)
+		}
+		
 		return
 	}
 
@@ -203,7 +232,13 @@ func (h *handler) GetWallet(w http.ResponseWriter, r *http.Request) {
 
 	balance, err := h.service.GetWallet(r.Context(), user.ID)
 	if err != nil {
-		json.InternalServerError(w, r, err)
+		switch {
+		case errors.Is(err, store.ErrBalanceNotFound):
+			json.NotFoundResponse(w, r, err)
+		default:
+			json.InternalServerError(w, r, err)
+		}
+		
 		return
 	}
 
