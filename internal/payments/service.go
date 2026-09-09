@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,7 +26,7 @@ type Service interface {
 	CreateCheckoutSession(ctx context.Context, payload CheckoutSessionDTO, user *store.User)(string, error)
 	GetCheckoutSession(ctx context.Context, token string) (*store.CheckoutSession, error)
 	Pay(ctx context.Context, token string, user *store.User) error
-	RequestRefund(ctx context.Context, payload RefundDTO) error
+	RequestRefund(ctx context.Context, req RefundRequest) error
 }
 
 type svc struct {
@@ -194,10 +195,15 @@ func (s *svc) Pay(ctx context.Context, token string, user *store.User) error {
 	return nil
 }
 
-func (s *svc) RequestRefund(ctx context.Context, payload RefundDTO) error {
+func (s *svc) RequestRefund(ctx context.Context, req RefundRequest) error {
+	// for now only payments are refundable.
+	if !isPayment(req.TransactionRef) {
+		return ErrNonRefundable
+	}
+
 	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
 		// fetch transaction
-		transaction, err := s.transactions.GetByRef(ctx, payload.TransactionRef)
+		transaction, err := s.transactions.GetByRef(ctx, req.TransactionRef)
 		if err != nil {
 			return fmt.Errorf("fetching transaction: %w", err)
 		}
@@ -215,7 +221,7 @@ func (s *svc) RequestRefund(ctx context.Context, payload RefundDTO) error {
 		// record the refund request
 		refundRequest := &store.RefundRequest{
 			ID: uuid.New(),
-			TransactionRef: payload.TransactionRef,
+			TransactionRef: req.TransactionRef,
 			Status: "pending",
 			Description: "don't want to use the service anymore",
 			CreatedAt: time.Now(),
@@ -253,6 +259,16 @@ func calculateFeeCeil(amount *big.Int) *big.Int {
 	fee.Add(fee, big.NewInt(999))
 	fee.Div(fee, big.NewInt(1000))
 	return fee
+}
+
+func isPayment(ref string) bool {
+	refArr := strings.Split(ref, "_")
+
+	if refArr[0] == "payment" {
+		return true
+	}
+
+	return false
 }
 
 // func (s *svc) Refund(ctx context.Context, payload RefundDTO) error {

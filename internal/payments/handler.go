@@ -1,6 +1,7 @@
 package payments
 
 import (
+	"errors"
 	"math/big"
 	"net/http"
 
@@ -107,24 +108,30 @@ func (h *handler) Pay(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type RefundDTO struct {
+type RefundRequest struct {
 	TransactionRef string `json:"transaction_ref" validate:"required"`
 }
 
 func (h *handler) RequestRefund(w http.ResponseWriter, r *http.Request) {
-	var payload RefundDTO
-	if err := json.ReadJSON(w, r, &payload); err != nil {
+	var req RefundRequest
+	if err := json.ReadJSON(w, r, &req); err != nil {
 		json.InternalServerError(w, r, err)
 		return
 	}
 
-	if err := json.Validate.Struct(payload); err != nil {
+	if err := json.Validate.Struct(req); err != nil {
 		json.BadRequestResponse(w, r, err)
 		return
 	}
 	
-	if err := h.service.RequestRefund(r.Context(), payload); err != nil {
-		json.InternalServerError(w, r, err)
+	if err := h.service.RequestRefund(r.Context(), req); err != nil {
+		switch {
+		case errors.Is(err, ErrNonRefundable):
+			json.JsonResponse(w, http.StatusUnprocessableEntity, err.Error())
+		default:
+			json.InternalServerError(w, r, err)
+		}
+		
 		return
 	}
 
@@ -134,7 +141,7 @@ func (h *handler) RequestRefund(w http.ResponseWriter, r *http.Request) {
 }
 
 // func (h *handler) Refund(w http.ResponseWriter, r *http.Request) {
-// 	var payload RefundDTO
+// 	var req RefundDTO
 // 	if err := json.ReadJSON(w, r, &payload); err != nil {
 // 		json.InternalServerError(w, r, err)
 // 		return
