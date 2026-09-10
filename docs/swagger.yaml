@@ -1,4 +1,78 @@
 basePath: /api/v1
+definitions:
+  users.CreateUserTokenRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  users.RegisterMerchantRequest:
+    properties:
+      business_name:
+        type: string
+      city:
+        type: string
+      dob:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      gender:
+        type: string
+      last_name:
+        type: string
+      password:
+        type: string
+      phone_number:
+        type: string
+      post_code:
+        type: string
+      state:
+        type: string
+      street:
+        type: string
+    required:
+    - business_name
+    - email
+    - first_name
+    - last_name
+    - password
+    type: object
+  users.RegisterRequest:
+    properties:
+      city:
+        type: string
+      dob:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      gender:
+        type: string
+      last_name:
+        type: string
+      password:
+        type: string
+      phone_number:
+        type: string
+      post_code:
+        type: string
+      state:
+        type: string
+      street:
+        type: string
+    required:
+    - email
+    - first_name
+    - last_name
+    - password
+    type: object
 info:
   contact:
     email: support@swagger.io
@@ -11,19 +85,143 @@ info:
   termsOfService: http://swagger.io/terms/
   title: Wallet API
 paths:
-  /health:
-    get:
-      description: Healthcheck endpoint
+  /authentication/merchant:
+    post:
+      consumes:
+      - application/json
+      description: Registers a merchant
+      parameters:
+      - description: Merchant informations
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/users.RegisterMerchantRequest'
       produces:
       - application/json
       responses:
-        "200":
-          description: ok
+        "201":
+          description: Merchant registered
           schema:
             type: string
-      summary: Healthcheck
+        "400":
+          description: Bad Request
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      summary: Registers a merchant
       tags:
-      - ops
+      - authentication
+  /authentication/token:
+    post:
+      consumes:
+      - application/json
+      description: Creates a token for a user
+      parameters:
+      - description: User credentials
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/users.CreateUserTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Token
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema: {}
+        "401":
+          description: Unauthorized
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      summary: Creates a token
+      tags:
+      - authentication
+  /authentication/user:
+    post:
+      consumes:
+      - application/json
+      description: Registers a user
+      parameters:
+      - description: User credentials
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/users.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User registered
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      summary: Registers a user
+      tags:
+      - authentication
+  /merchants/activate/{token}:
+    put:
+      description: Activates/Register a merchant by invitation token
+      parameters:
+      - description: Invitation token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Merchant activated
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      summary: Activates/Register a merchant
+      tags:
+      - users
+  /users/activate/{token}:
+    put:
+      description: Activates/Register a user by invitation token
+      parameters:
+      - description: Invitation token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: User activated
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      summary: Activates/Register a user
+      tags:
+      - users
 securityDefinitions:
   ApiKeyAuth:
     in: header

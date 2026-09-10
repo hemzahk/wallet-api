@@ -31,6 +31,18 @@ type RegisterRequest struct {
 	PostCode string `json:"post_code"`
 }
 
+// registerCustomer godoc
+//
+//	@Summary		Registers a user
+//	@Description	Registers a user
+//	@Tags			authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			payload	body		RegisterRequest	true	"User credentials"
+//	@Success		201		{object}	string		"User registered"
+//	@Failure		400		{object}	error
+//	@Failure		500		{object}	error
+//	@Router			/authentication/user [post]
 func (h *handler) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.ReadJSON(w,r, &req); err != nil {
@@ -59,6 +71,17 @@ func (h *handler) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ActivateCustomer godoc
+//
+//	@Summary		Activates/Register a user
+//	@Description	Activates/Register a user by invitation token
+//	@Tags			users
+//	@Produce		json
+//	@Param			token	path		string	true	"Invitation token"
+//	@Success		204		{string}	string	"User activated"
+//	@Failure		404		{object}	error
+//	@Failure		500		{object}	error
+//	@Router			/users/activate/{token} [put]
 func (h *handler) ActivateCustomer(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 
@@ -87,6 +110,18 @@ type RegisterMerchantRequest struct {
 	PostCode string `json:"post_code"`	
 }
 
+// RegisterMerchant godoc
+//
+//	@Summary		Registers a merchant
+//	@Description	Registers a merchant
+//	@Tags			authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			payload	body		RegisterMerchantRequest	true	"Merchant informations"
+//	@Success		201		{object}	string		"Merchant registered"
+//	@Failure		400		{object}	error
+//	@Failure		500		{object}	error
+//	@Router			/authentication/merchant [post]
 func (h *handler) RegisterMerchant(w http.ResponseWriter, r *http.Request)  {
 	var req RegisterMerchantRequest
 	if err := json.ReadJSON(w,r, &req); err != nil {
@@ -115,6 +150,17 @@ func (h *handler) RegisterMerchant(w http.ResponseWriter, r *http.Request)  {
 	}
 }
 
+// ActivateMerchant godoc
+//
+//	@Summary		Activates/Register a merchant
+//	@Description	Activates/Register a merchant by invitation token
+//	@Tags			users
+//	@Produce		json
+//	@Param			token	path		string	true	"Invitation token"
+//	@Success		204		{string}	string	"Merchant activated"
+//	@Failure		404		{object}	error
+//	@Failure		500		{object}	error
+//	@Router			/merchants/activate/{token} [put]
 func (h *handler) ActivateMerchant(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 
@@ -133,6 +179,19 @@ type CreateUserTokenRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
+// CreateToken godoc
+//
+//	@Summary		Creates a token
+//	@Description	Creates a token for a user
+//	@Tags			authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			payload	body		CreateUserTokenRequest	true	"User credentials"
+//	@Success		201		{string}	string					"Token"
+//	@Failure		400		{object}	error
+//	@Failure		401		{object}	error
+//	@Failure		500		{object}	error
+//	@Router			/authentication/token [post]
 func (h *handler) CreateToken(w http.ResponseWriter, r *http.Request) {
 	var req CreateUserTokenRequest
 	if err := json.ReadJSON(w, r, &req); err != nil {
