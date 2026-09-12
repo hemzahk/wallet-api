@@ -31,18 +31,18 @@ type RegisterRequest struct {
 	PostCode string `json:"post_code"`
 }
 
-// registerCustomer godoc
+// 	RegisterCustomer godoc
 //
-//	@Summary		Registers a user
-//	@Description	Registers a user
+//	@Summary		Registers a customer
+//	@Description	Registers a customer
 //	@Tags			authentication
 //	@Accept			json
 //	@Produce		json
-//	@Param			payload	body		RegisterRequest	true	"User credentials"
-//	@Success		201		{object}	string		"User registered"
-//	@Failure		400		{object}	error
+//	@Param			payload	body		RegisterRequest	true	"Customer informations"
+//	@Success		201		{object}	string		"Customer registered"
+//	@Failure		409		{object}	error
 //	@Failure		500		{object}	error
-//	@Router			/authentication/user [post]
+//	@Router			/auth/register/customer [post]
 func (h *handler) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.ReadJSON(w,r, &req); err != nil {
@@ -73,15 +73,15 @@ func (h *handler) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
 
 // ActivateCustomer godoc
 //
-//	@Summary		Activates/Register a user
-//	@Description	Activates/Register a user by invitation token
+//	@Summary		Activates/Register a customer
+//	@Description	Activates/Register a customer by invitation token
 //	@Tags			users
 //	@Produce		json
 //	@Param			token	path		string	true	"Invitation token"
-//	@Success		204		{string}	string	"User activated"
+//	@Success		204		{string}	string	"Customer activated"
 //	@Failure		404		{object}	error
 //	@Failure		500		{object}	error
-//	@Router			/users/activate/{token} [put]
+//	@Router			/customers/activate/{token} [put]
 func (h *handler) ActivateCustomer(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 
@@ -119,9 +119,9 @@ type RegisterMerchantRequest struct {
 //	@Produce		json
 //	@Param			payload	body		RegisterMerchantRequest	true	"Merchant informations"
 //	@Success		201		{object}	string		"Merchant registered"
-//	@Failure		400		{object}	error
+//	@Failure		409		{object}	error
 //	@Failure		500		{object}	error
-//	@Router			/authentication/merchant [post]
+//	@Router			/auth/register/merchant [post]
 func (h *handler) RegisterMerchant(w http.ResponseWriter, r *http.Request)  {
 	var req RegisterMerchantRequest
 	if err := json.ReadJSON(w,r, &req); err != nil {
@@ -188,10 +188,9 @@ type CreateUserTokenRequest struct {
 //	@Produce		json
 //	@Param			payload	body		CreateUserTokenRequest	true	"User credentials"
 //	@Success		201		{string}	string					"Token"
-//	@Failure		400		{object}	error
 //	@Failure		401		{object}	error
 //	@Failure		500		{object}	error
-//	@Router			/authentication/token [post]
+//	@Router			/auth/token [post]
 func (h *handler) CreateToken(w http.ResponseWriter, r *http.Request) {
 	var req CreateUserTokenRequest
 	if err := json.ReadJSON(w, r, &req); err != nil {

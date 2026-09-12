@@ -59,10 +59,11 @@ type TransferRequest struct {
 //	@Param			payload	body		TopupRequest	true	"Topup amount"
 //	@Success		202		{object}	string		"Topup initiated"
 //	@Failure		401		{object}	string "unauthorized"
+//	@Failure		403		{object}	error
 //	@Failure		404		{object}	error
 //	@Failure		500		{object}	error
 //	@Security		ApiKeyAuth
-//	@Router			/wallet/topup [post]
+//	@Router			/wallet/top-ups [post]
 func (h *handler) Topup(w http.ResponseWriter, r *http.Request) {
 	var req TopupRequest
 	if err := json.ReadJSON(w, r, &req); err != nil {
@@ -114,7 +115,7 @@ type TopupWebhookPayload struct {
 //	@Param			payload	body		TopupWebhookPayload	true	"Webhook payload"
 //	@Success		200		{object}	string		"success"
 //	@Failure		500		{object}	error
-//	@Router			/webhooks/topup [post]
+//	@Router			/webhooks/top-ups [post]
 func (h *handler) TopupWebhook(w http.ResponseWriter, r *http.Request) {
 	rawBody, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -160,7 +161,7 @@ func (h *handler) TopupWebhook(w http.ResponseWriter, r *http.Request) {
 //	@Param			payload	body		PayoutWebhookPayload	true	"Webhook payload"
 //	@Success		200		{object}	string		"success"
 //	@Failure		500		{object}	error
-//	@Router			/webhooks/payout [post]
+//	@Router			/webhooks/withdrawals [post]
 func (h *handler) PayoutWebhook(w http.ResponseWriter, r *http.Request) {
 	rawBody, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -206,10 +207,11 @@ func (h *handler) PayoutWebhook(w http.ResponseWriter, r *http.Request) {
 //	@Param			payload	body		WithdrawalRequest	true	"Withdrawal amount"
 //	@Success		202		{object}	string		"Withdrawal initiated"
 //	@Failure		401		{object}	string "unauthorized"
+//	@Failure		403		{object}	error
 //	@Failure		404		{object}	error
 //	@Failure		500		{object}	error
 //	@Security		ApiKeyAuth
-//	@Router			/wallet/withdraw [post]
+//	@Router			/wallet/withdrawals [post]
 func (h *handler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	var req WithdrawalRequest
 	if err := json.ReadJSON(w,r,&req); err != nil {
@@ -257,11 +259,12 @@ func (h *handler) Withdraw(w http.ResponseWriter, r *http.Request) {
 //	@Success		202		{object}	string		"Transfer succeeded"
 //	@Failure		401		{object}	string "unauthorized"
 //	@Failure		402		{object}	error
+//	@Failure		403		{object}	error
 //	@Failure		404		{object}	error
 //	@Failure		422		{object}	error
 //	@Failure		500		{object}	error
 //	@Security		ApiKeyAuth
-//	@Router			/wallet/transfer [post]
+//	@Router			/wallet/transfers [post]
 func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 	var req TransferRequest
 	if err := json.ReadJSON(w, r, &req); err != nil {

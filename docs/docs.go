@@ -24,7 +24,49 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/authentication/merchant": {
+        "/auth/register/customer": {
+            "post": {
+                "description": "Registers a customer",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authentication"
+                ],
+                "summary": "Registers a customer",
+                "parameters": [
+                    {
+                        "description": "Customer informations",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/users.RegisterRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Customer registered",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {}
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {}
+                    }
+                }
+            }
+        },
+        "/auth/register/merchant": {
             "post": {
                 "description": "Registers a merchant",
                 "consumes": [
@@ -55,8 +97,8 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "409": {
+                        "description": "Conflict",
                         "schema": {}
                     },
                     "500": {
@@ -66,7 +108,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/authentication/token": {
+        "/auth/token": {
             "post": {
                 "description": "Creates a token for a user",
                 "consumes": [
@@ -97,10 +139,6 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {}
-                    },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {}
@@ -112,9 +150,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/authentication/user": {
+        "/checkout-sessions": {
             "post": {
-                "description": "Registers a user",
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Creates a checkout session",
                 "consumes": [
                     "application/json"
                 ],
@@ -122,29 +165,123 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "authentication"
+                    "checkout-sessions"
                 ],
-                "summary": "Registers a user",
+                "summary": "Creates a checkout session",
                 "parameters": [
                     {
-                        "description": "User credentials",
+                        "description": "Checkout session request",
                         "name": "payload",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/users.RegisterRequest"
+                            "$ref": "#/definitions/payments.CheckoutSessionRequest"
                         }
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "User registered",
+                    "200": {
+                        "description": "Checkout session created",
                         "schema": {
                             "type": "string"
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {}
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {}
+                    }
+                }
+            }
+        },
+        "/checkout-sessions/{token}/pay": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Pays",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "checkout-sessions"
+                ],
+                "summary": "Pays",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Idempotency-Key must be set for valid response",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Checkout session token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Payment succeeded",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "402": {
+                        "description": "Payment Required",
+                        "schema": {}
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {}
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {}
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {}
+                    }
+                }
+            }
+        },
+        "/customers/activate/{token}": {
+            "put": {
+                "description": "Activates/Register a customer by invitation token",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Activates/Register a customer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Customer activated",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {}
                     },
                     "500": {
@@ -191,34 +328,56 @@ const docTemplate = `{
                 }
             }
         },
-        "/users/activate/{token}": {
-            "put": {
-                "description": "Activates/Register a user by invitation token",
+        "/refunds": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Request a refund",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "users"
+                    "refunds"
                 ],
-                "summary": "Activates/Register a user",
+                "summary": "Request a refund",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Invitation token",
-                        "name": "token",
-                        "in": "path",
+                        "description": "Idempotency-Key must be set for valid response",
+                        "name": "Idempotency-Key",
+                        "in": "header",
                         "required": true
+                    },
+                    {
+                        "description": "Refund request",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/payments.RefundRequest"
+                        }
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "User activated",
+                    "202": {
+                        "description": "Refund accepted",
                         "schema": {
                             "type": "string"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {}
+                    },
                     "404": {
                         "description": "Not Found",
+                        "schema": {}
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {}
                     },
                     "500": {
@@ -228,7 +387,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/wallet/topup": {
+        "/wallet/top-ups": {
             "post": {
                 "security": [
                     {
@@ -276,6 +435,10 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {}
                     },
                     "404": {
                         "description": "Not Found",
@@ -327,7 +490,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/wallet/transfer": {
+        "/wallet/transfers": {
             "post": {
                 "security": [
                     {
@@ -380,6 +543,10 @@ const docTemplate = `{
                         "description": "Payment Required",
                         "schema": {}
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {}
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {}
@@ -395,7 +562,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/wallet/withdraw": {
+        "/wallet/withdrawals": {
             "post": {
                 "security": [
                     {
@@ -444,6 +611,10 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {}
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {}
@@ -455,52 +626,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/webhooks/payout": {
-            "post": {
-                "description": "Response from the PSP",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "webhooks"
-                ],
-                "summary": "Response from the PSP",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "X-Webhook-Signature must be set for valid response",
-                        "name": "X-Webhook-Signature",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "description": "Webhook payload",
-                        "name": "payload",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/wallets.PayoutWebhookPayload"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "success",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {}
-                    }
-                }
-            }
-        },
-        "/webhooks/topup": {
+        "/webhooks/top-ups": {
             "post": {
                 "description": "Response from the PSP",
                 "consumes": [
@@ -544,9 +670,76 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/webhooks/withdrawals": {
+            "post": {
+                "description": "Response from the PSP",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "webhooks"
+                ],
+                "summary": "Response from the PSP",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "X-Webhook-Signature must be set for valid response",
+                        "name": "X-Webhook-Signature",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Webhook payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/wallets.PayoutWebhookPayload"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {}
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "payments.CheckoutSessionRequest": {
+            "type": "object",
+            "required": [
+                "amount"
+            ],
+            "properties": {
+                "amount": {
+                    "type": "string"
+                }
+            }
+        },
+        "payments.RefundRequest": {
+            "type": "object",
+            "required": [
+                "transaction_ref"
+            ],
+            "properties": {
+                "transaction_ref": {
+                    "type": "string"
+                }
+            }
+        },
         "users.CreateUserTokenRequest": {
             "type": "object",
             "required": [

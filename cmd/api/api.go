@@ -115,7 +115,7 @@ func (app *application) mount() http.Handler {
 		
 		r.Get("/health", healthCheckHandler.HealthCheck)
 
-		r.Route("/users", func(r chi.Router) {
+		r.Route("/customers", func(r chi.Router) {
 			r.Put("/activate/{token}", userHandler.ActivateCustomer)
 		})
 
@@ -126,12 +126,12 @@ func (app *application) mount() http.Handler {
 		walletService := wallets.NewService(app.store.Transactions, app.store.Balances, app.store.WebhookEventIDs, app.txManager, app.gateway)
 		walletHandler := wallets.NewHandler(walletService, app.gateway)
 
-		r.Post("/webhooks/topup", walletHandler.TopupWebhook)
-		r.Post("/webhooks/payout", walletHandler.PayoutWebhook)
+		r.Post("/webhooks/top-ups", walletHandler.TopupWebhook)
+		r.Post("/webhooks/withdrawals", walletHandler.PayoutWebhook)
 		
-		r.Route("/authentication", func(r chi.Router) {
-			r.Post("/user", userHandler.RegisterCustomer)
-			r.Post("/merchant", userHandler.RegisterMerchant)
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/register/customer", userHandler.RegisterCustomer)
+			r.Post("/register/merchant", userHandler.RegisterMerchant)
 			r.Post("/token", userHandler.CreateToken)
 		})
 
@@ -150,15 +150,14 @@ func (app *application) mount() http.Handler {
 												  app.txManager,
 												)
 			paymentHandler := payments.NewHandler(paymentService)
-			r.Post("/payments/checkout-sessions", authMiddleware.CheckRequiredRole("merchant", paymentHandler.CreateCheckoutSession))
-			// r.Get("/payments/checkout-sessions/{token}", authMiddleware.CheckRequiredRole("customer", paymentHandler.GetCheckoutSession))
-
+			r.Post("/checkout-sessions", authMiddleware.CheckRequiredRole("merchant", paymentHandler.CreateCheckoutSession))
+			
 			r.Group(func(r chi.Router) {
 				r.Use(idempotencyMiddleware.Wrap)
-				r.Post("/wallet/topup",authMiddleware.CheckRequiredRole("customer", walletHandler.Topup) )
-				r.Post("/wallet/transfer", authMiddleware.CheckRequiredRole("customer", walletHandler.Transfer))
-				r.Post("/wallet/withdraw",authMiddleware.CheckRequiredRole("customer", walletHandler.Withdraw) )
-				r.Post("/payments/checkout-sessions/{token}/pay",authMiddleware.CheckRequiredRole("customer", paymentHandler.Pay))
+				r.Post("/wallet/top-ups",authMiddleware.CheckRequiredRole("customer", walletHandler.Topup) )
+				r.Post("/wallet/transfers", authMiddleware.CheckRequiredRole("customer", walletHandler.Transfer))
+				r.Post("/wallet/withdrawals",authMiddleware.CheckRequiredRole("customer", walletHandler.Withdraw) )
+				r.Post("/checkout-sessions/{token}/pay",authMiddleware.CheckRequiredRole("customer", paymentHandler.Pay))
 				r.Post("/refunds", authMiddleware.CheckRequiredRole("customer", paymentHandler.RequestRefund))
 			})
 		})

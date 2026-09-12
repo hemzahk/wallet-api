@@ -23,6 +23,19 @@ type CheckoutSessionRequest struct {
 	Amount string `json:"amount" validate:"required"`
 }
 
+// CreateCheckoutSession godoc
+//
+//	@Summary		Creates a checkout session
+//	@Description	Creates a checkout session
+//	@Tags			checkout-sessions
+//	@Accept			json
+//	@Produce		json
+//	@Param			payload	body		CheckoutSessionRequest	true	"Checkout session request"
+//	@Success		200		{object}	string		"Checkout session created"
+//	@Failure		403		{object}	error
+//	@Failure		500		{object}	error
+//	@Security		ApiKeyAuth
+//	@Router			/checkout-sessions [post]
 func (h *handler) CreateCheckoutSession(w http.ResponseWriter, r *http.Request) {
 	var req CheckoutSessionRequest
 	if err := json.ReadJSON(w, r, &req); err != nil {
@@ -54,19 +67,35 @@ func (h *handler) CreateCheckoutSession(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+//  Pay godoc
+//
+//	@Summary		Pays 
+//	@Description	Pays
+//	@Tags			checkout-sessions
+//	@Produce		json
+//	@Param        	Idempotency-Key		header    string    true   	"Idempotency-Key must be set for valid response"
+//	@Param			token	path		string	true	"Checkout session token"
+//	@Success		200		{object}	string		"Payment succeeded"
+//	@Failure		402		{object}	error
+//	@Failure		403		{object}	error
+//	@Failure		404		{object}	error
+//	@Failure		500		{object}	error
+//	@Security		ApiKeyAuth
+//	@Router			/checkout-sessions/{token}/pay [post]
 func (h *handler) Pay(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	user := r.Context().Value("user").(*store.User)
 
 	if err := h.service.Pay(r.Context(), token, user); err != nil {
-		switch err{
-		case store.ErrCheckoutSessionNotFound:
+		switch {
+		case errors.Is(err,store.ErrCheckoutSessionNotFound ):
 			json.NotFoundResponse(w,r,err)
-		case ErrInsufficientBalance:
+		case errors.Is(err,ErrInsufficientBalance):
 			json.JsonResponse(w, http.StatusPaymentRequired, err.Error())
 		default:
 			json.InternalServerError(w, r, err)
 		}
+
 		return		
 	}
 
@@ -79,6 +108,21 @@ type RefundRequest struct {
 	TransactionRef string `json:"transaction_ref" validate:"required"`
 }
 
+//  RequestRefund godoc
+//
+//	@Summary		Request a refund 
+//	@Description	Request a refund
+//	@Tags			refunds
+//	@Produce		json
+//	@Param        	Idempotency-Key		header    string    true   	"Idempotency-Key must be set for valid response"
+//	@Param			payload	body		RefundRequest	true	"Refund request"
+//	@Success		202		{object}	string		"Refund accepted"
+//	@Failure		403		{object}	error
+//	@Failure		404		{object}	error
+//	@Failure		422		{object}	error
+//	@Failure		500		{object}	error
+//	@Security		ApiKeyAuth
+//	@Router			/refunds [post]
 func (h *handler) RequestRefund(w http.ResponseWriter, r *http.Request) {
 	var req RefundRequest
 	if err := json.ReadJSON(w, r, &req); err != nil {
@@ -106,54 +150,4 @@ func (h *handler) RequestRefund(w http.ResponseWriter, r *http.Request) {
 		json.InternalServerError(w, r, err)
 	}	
 }
-
-// func (h *handler) Refund(w http.ResponseWriter, r *http.Request) {
-// 	var req RefundDTO
-// 	if err := json.ReadJSON(w, r, &payload); err != nil {
-// 		json.InternalServerError(w, r, err)
-// 		return
-// 	}
-
-// 	if err := json.Validate.Struct(payload); err != nil {
-// 		json.BadRequestResponse(w, r, err)
-// 		return
-// 	}
-
-// 	if err := h.service.Refund(r.Context(), payload); err != nil {
-// 		json.InternalServerError(w, r, err)
-// 		return
-// 	}
-
-// 	if err := json.JsonResponse(w, http.StatusOK, "success"); err != nil {
-// 		json.InternalServerError(w, r, err)
-// 	}
-// }
-
-/*func (h *handler) GetCheckoutSession(w http.ResponseWriter, r *http.Request) {
-	token := chi.URLParam(r, "token")
-
-	session, err := h.service.GetCheckoutSession(r.Context(), token)
-	if err != nil {
-		json.InternalServerError(w, r, err)
-		return
-	}
-
-	bf := new(big.Float).SetInt(session.Amount)
-
-	// Divide by 100
-	divisor := big.NewFloat(100)
-	dzdAmount := new(big.Float).Quo(bf, divisor)
-
-	res := struct {
-		MerchantID string `json:"merchant_id"`
-		Amount string `json:"amount"`
-	}{
-		MerchantID: session.MerchantID.String(),
-		Amount : dzdAmount.String(),
-	}
-
-	if err := json.JsonResponse(w, http.StatusOK, res); err != nil {
-		json.InternalServerError(w, r, err)
-	}
-}*/
 

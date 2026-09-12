@@ -187,10 +187,12 @@ func (s *svc) Pay(ctx context.Context, token string, user *store.User) error {
 }
 
 func (s *svc) RequestRefund(ctx context.Context, req RefundRequest) error {
-	// for now only payments are refundable.
+	// for now only payment transactions are refundable.
 	if !isPayment(req.TransactionRef) {
 		return ErrNonRefundable
 	}
+
+	// Do we have to check ownership (the user is trying to get a refund for his transaction not other user's transaction ?)
 
 	err := s.txManager.WithTx(ctx, func(ctx context.Context) error {
 		// fetch transaction
