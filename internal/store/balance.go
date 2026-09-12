@@ -113,7 +113,7 @@ func (s *BalanceStore) GetByIdentityID(ctx context.Context, identityID uuid.UUID
 
 func (s *BalanceStore) GetByEmail(ctx context.Context, email string) (*Balance, error) {
 	query := `
-		SELECT b.id, b.identity_id, b.ledger_id, b.balance_id, b.balance, b.currency, b.version, b.created_at 
+		SELECT b.id, b.identity_id, b.ledger_id, b.balance_id, b.balance, b.inflight_credit_balance, b.inflight_debit_balance, b.currency, b.version, b.created_at 
 		FROM balances b 
 		JOIN users u ON (b.identity_id = u.identity_id)
 		WHERE u.email = $1
@@ -123,7 +123,7 @@ func (s *BalanceStore) GetByEmail(ctx context.Context, email string) (*Balance, 
 	defer cancel()
 
 	balance := &Balance{}
-	var balanceAsInt int64
+	var balanceAsInt, inflightCreditBalance, inflightDebitBalance int64
 
 	err := s.db.QueryRowContext(ctx, query, email).Scan(
 		&balance.ID,
@@ -131,6 +131,8 @@ func (s *BalanceStore) GetByEmail(ctx context.Context, email string) (*Balance, 
 		&balance.LedgerID,
 		&balance.BalanceID,
 		&balanceAsInt,
+		&inflightCreditBalance,
+		&inflightDebitBalance,
 		&balance.Currency,
 		&balance.Version,
 		&balance.CreatedAt,
@@ -140,6 +142,8 @@ func (s *BalanceStore) GetByEmail(ctx context.Context, email string) (*Balance, 
 	}
 
 	balance.Balance = big.NewInt(balanceAsInt)
+	balance.InflightCreditBalance = big.NewInt(inflightCreditBalance)
+	balance.InflightDebitBalance = big.NewInt(inflightDebitBalance)
 
 	return balance, nil
 }

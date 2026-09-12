@@ -79,7 +79,13 @@ import (
 
 func main() {
 	secret := "OC83Vc7lna7sADKHzdWZZiWvVceu3gR5MGuOTgkGisc"
-	payload := `{"gateway_ref":"feea0ed4-31c2-40a4-813d-224447cb3343","topup_id":"9f27828b-3943-42b1-b854-e7b1ee4b12c3","status":"success","amount":"10000.00"}`
+	payload := `{
+  "amount": "17000.00",
+  "event_id": "19376e3a-9dd2-47ba-be36-298459e64677",
+  "gateway_ref": "3b2d04c9-78ad-456e-b5cb-01ac5f301f43",
+  "source_id": "645b44fb-314f-4e34-8106-17b09cc9660a",
+  "status": "succeeded"
+}`
 
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(payload))

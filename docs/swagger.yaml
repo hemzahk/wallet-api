@@ -73,6 +73,68 @@ definitions:
     - last_name
     - password
     type: object
+  wallets.PayoutWebhookPayload:
+    properties:
+      amount:
+        type: string
+      event_id:
+        type: string
+      gateway_ref:
+        type: string
+      source_id:
+        description: for our PSP 645b44fb-314f-4e34-8106-17b09cc9660a
+        type: string
+      status:
+        type: string
+    type: object
+  wallets.TopupRequest:
+    properties:
+      amount:
+        type: string
+    required:
+    - amount
+    type: object
+  wallets.TopupWebhookPayload:
+    properties:
+      amount:
+        type: string
+      event_id:
+        type: string
+      gateway_ref:
+        type: string
+      source_id:
+        description: for our PSP 645b44fb-314f-4e34-8106-17b09cc9660a
+        type: string
+      status:
+        type: string
+    type: object
+  wallets.TransferRequest:
+    properties:
+      amount:
+        type: string
+      email:
+        type: string
+      reference:
+        type: string
+    required:
+    - amount
+    - email
+    - reference
+    type: object
+  wallets.WithdrawalRequest:
+    properties:
+      amount:
+        type: string
+      bank_name:
+        type: string
+      number:
+        type: string
+      reference:
+        type: string
+    required:
+    - amount
+    - reference
+    type: object
 info:
   contact:
     email: support@swagger.io
@@ -222,6 +284,214 @@ paths:
       summary: Activates/Register a user
       tags:
       - users
+  /wallet/topup:
+    post:
+      consumes:
+      - application/json
+      description: Initiates a topup
+      parameters:
+      - description: Idempotency-Key must be set for valid response
+        in: header
+        name: Idempotency-Key
+        required: true
+        type: string
+      - description: Topup amount
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/wallets.TopupRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Topup initiated
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      security:
+      - ApiKeyAuth: []
+      summary: Initiates a topup
+      tags:
+      - wallet
+  /wallet/transactions:
+    get:
+      description: Get user's transaction history
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: transactions
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      security:
+      - ApiKeyAuth: []
+      summary: Get user's transaction history
+      tags:
+      - wallet
+  /wallet/transfer:
+    post:
+      consumes:
+      - application/json
+      description: P2P money transfer
+      parameters:
+      - description: Idempotency-Key must be set for valid response
+        in: header
+        name: Idempotency-Key
+        required: true
+        type: string
+      - description: Transfer request
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/wallets.TransferRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Transfer succeeded
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "402":
+          description: Payment Required
+          schema: {}
+        "404":
+          description: Not Found
+          schema: {}
+        "422":
+          description: Unprocessable Entity
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      security:
+      - ApiKeyAuth: []
+      summary: P2P money transfer
+      tags:
+      - wallet
+  /wallet/withdraw:
+    post:
+      consumes:
+      - application/json
+      description: Initiates a withdrawal
+      parameters:
+      - description: Idempotency-Key must be set for valid response
+        in: header
+        name: Idempotency-Key
+        required: true
+        type: string
+      - description: Withdrawal amount
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/wallets.WithdrawalRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Withdrawal initiated
+          schema:
+            type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      security:
+      - ApiKeyAuth: []
+      summary: Initiates a withdrawal
+      tags:
+      - wallet
+  /webhooks/payout:
+    post:
+      consumes:
+      - application/json
+      description: Response from the PSP
+      parameters:
+      - description: X-Webhook-Signature must be set for valid response
+        in: header
+        name: X-Webhook-Signature
+        required: true
+        type: string
+      - description: Webhook payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/wallets.PayoutWebhookPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema: {}
+      summary: Response from the PSP
+      tags:
+      - webhooks
+  /webhooks/topup:
+    post:
+      consumes:
+      - application/json
+      description: Response from the PSP
+      parameters:
+      - description: X-Webhook-Signature must be set for valid response
+        in: header
+        name: X-Webhook-Signature
+        required: true
+        type: string
+      - description: Webhook payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/wallets.TopupWebhookPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema: {}
+      summary: Response from the PSP
+      tags:
+      - webhooks
 securityDefinitions:
   ApiKeyAuth:
     in: header

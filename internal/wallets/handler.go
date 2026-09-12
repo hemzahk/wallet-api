@@ -48,6 +48,21 @@ type TransferRequest struct {
 	Reference string `json:"reference" validate:"required"`
 }
 
+// Topup godoc
+//
+//	@Summary		Initiates a topup
+//	@Description	Initiates a topup
+//	@Tags			wallet
+//	@Accept			json
+//	@Produce		json
+//	@Param        	Idempotency-Key		header    string    true   	"Idempotency-Key must be set for valid response"
+//	@Param			payload	body		TopupRequest	true	"Topup amount"
+//	@Success		202		{object}	string		"Topup initiated"
+//	@Failure		401		{object}	string "unauthorized"
+//	@Failure		404		{object}	error
+//	@Failure		500		{object}	error
+//	@Security		ApiKeyAuth
+//	@Router			/wallet/topup [post]
 func (h *handler) Topup(w http.ResponseWriter, r *http.Request) {
 	var req TopupRequest
 	if err := json.ReadJSON(w, r, &req); err != nil {
@@ -88,6 +103,18 @@ type TopupWebhookPayload struct {
 	Amount     string `json:"amount"`
 }
 
+// TopupWebhook godoc
+//
+//	@Summary		Response from the PSP
+//	@Description	Response from the PSP
+//	@Tags			webhooks
+//	@Accept			json
+//	@Produce		json
+//	@Param        	X-Webhook-Signature		header    string    true   	"X-Webhook-Signature must be set for valid response"
+//	@Param			payload	body		TopupWebhookPayload	true	"Webhook payload"
+//	@Success		200		{object}	string		"success"
+//	@Failure		500		{object}	error
+//	@Router			/webhooks/topup [post]
 func (h *handler) TopupWebhook(w http.ResponseWriter, r *http.Request) {
 	rawBody, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -122,6 +149,18 @@ func (h *handler) TopupWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// 	PayoutWebhook godoc
+//
+//	@Summary		Response from the PSP
+//	@Description	Response from the PSP
+//	@Tags			webhooks
+//	@Accept			json
+//	@Produce		json
+//	@Param        	X-Webhook-Signature		header    string    true   	"X-Webhook-Signature must be set for valid response"
+//	@Param			payload	body		PayoutWebhookPayload	true	"Webhook payload"
+//	@Success		200		{object}	string		"success"
+//	@Failure		500		{object}	error
+//	@Router			/webhooks/payout [post]
 func (h *handler) PayoutWebhook(w http.ResponseWriter, r *http.Request) {
 	rawBody, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -156,6 +195,21 @@ func (h *handler) PayoutWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Withdraw godoc
+//
+//	@Summary		Initiates a withdrawal
+//	@Description	Initiates a withdrawal
+//	@Tags			wallet
+//	@Accept			json
+//	@Produce		json
+//	@Param        	Idempotency-Key		header    string    true   	"Idempotency-Key must be set for valid response"
+//	@Param			payload	body		WithdrawalRequest	true	"Withdrawal amount"
+//	@Success		202		{object}	string		"Withdrawal initiated"
+//	@Failure		401		{object}	string "unauthorized"
+//	@Failure		404		{object}	error
+//	@Failure		500		{object}	error
+//	@Security		ApiKeyAuth
+//	@Router			/wallet/withdraw [post]
 func (h *handler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	var req WithdrawalRequest
 	if err := json.ReadJSON(w,r,&req); err != nil {
@@ -191,6 +245,23 @@ func (h *handler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Transfer godoc
+//
+//	@Summary		P2P money transfer
+//	@Description	P2P money transfer
+//	@Tags			wallet
+//	@Accept			json
+//	@Produce		json
+//	@Param        	Idempotency-Key		header    string    true   	"Idempotency-Key must be set for valid response"
+//	@Param			payload	body		TransferRequest	true	"Transfer request"
+//	@Success		202		{object}	string		"Transfer succeeded"
+//	@Failure		401		{object}	string "unauthorized"
+//	@Failure		402		{object}	error
+//	@Failure		404		{object}	error
+//	@Failure		422		{object}	error
+//	@Failure		500		{object}	error
+//	@Security		ApiKeyAuth
+//	@Router			/wallet/transfer [post]
 func (h *handler) Transfer(w http.ResponseWriter, r *http.Request) {
 	var req TransferRequest
 	if err := json.ReadJSON(w, r, &req); err != nil {
@@ -247,6 +318,18 @@ func (h *handler) GetWallet(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// 	GetTransactionHistory godoc
+//
+//	@Summary		Get user's transaction history
+//	@Description	Get user's transaction history
+//	@Tags			wallet
+//	@Produce		json
+//	@Success		200		{object}	string		"transactions"
+//	@Failure		401		{object}	string      "unauthorized"
+//	@Failure		404		{object}	error
+//	@Failure		500		{object}	error
+//	@Security		ApiKeyAuth
+//	@Router			/wallet/transactions [get]
 func (h *handler) GetTransactionHistory(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value("user").(*store.User)
 
