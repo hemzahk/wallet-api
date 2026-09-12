@@ -32,7 +32,7 @@
 ```bash
 docker compose up -d
 copy .env.example .env
-migrate -path ./cmd/migrate/migrations -database "postgres://LKGVqjLa:QEtxBn5NKnqQ4NvGKsWu@localhost:5432/wallet?sslmode=disable" up
+migrate -path ./cmd/migrate/migrations -database "postgres://username:password@localhost:5432/wallet?sslmode=disable" up
 go test ./...
 go run ./cmd/api
 go run ./cmd/worker
@@ -46,7 +46,7 @@ ENV=development
 EXTERNAL_URL=localhost:8080
 FRONTEND_URL=http://localhost:3000
 
-DB_ADDR=postgres://LKGVqjLa:QEtxBn5NKnqQ4NvGKsWu@localhost:5432/wallet?sslmode=disable
+DB_ADDR=postgres://username:password@localhost:5432/wallet?sslmode=disable
 DB_MAX_OPEN_CONNS=25
 DB_MAX_IDLE_CONNS=25
 DB_MAX_IDLE_TIME=15m
@@ -66,11 +66,11 @@ RATELIMITER_ENABLED=true
 The migration command uses the PostgreSQL container from Docker Compose. To roll back the latest migration, run:
 
 ```bash
-migrate -path ./cmd/migrate/migrations -database "postgres://LKGVqjLa:QEtxBn5NKnqQ4NvGKsWu@localhost:5432/wallet?sslmode=disable" down 1
+migrate -path ./cmd/migrate/migrations -database "postgres://username:password@localhost:5432/wallet?sslmode=disable" down 1
 ```
 
 ## Contact
 
 - **Author:** Hemza Kareche
-- **LinkedIn:** `https://www.linkedin.com/in/hemza-kareche-56933a302/`
+- **LinkedIn:** https://www.linkedin.com/in/hemza-kareche-56933a302/
 - **Email:** hemza.hk18@gmail.com
