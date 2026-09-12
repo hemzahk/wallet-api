@@ -151,14 +151,9 @@ definitions:
     type: object
 info:
   contact:
-    email: support@swagger.io
+    email: hemza.hk18@gmail.com
     name: API Support
-    url: http://www.swagger.io/support
   description: This is digital wallet API.
-  license:
-    name: Apache 2.0
-    url: http://www.apache.org/licenses/LICENSE-2.0.html
-  termsOfService: http://swagger.io/terms/
   title: Wallet API
 paths:
   /auth/register/customer:
