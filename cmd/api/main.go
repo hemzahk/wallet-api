@@ -1,15 +1,17 @@
 package main
 
 import (
-	conf "github.com/hemzahk/wallet-api/config"
+	"time"
+
 	"github.com/hemzahk/wallet-api/internal/auth"
 	"github.com/hemzahk/wallet-api/internal/database"
 	"github.com/hemzahk/wallet-api/internal/dbtx"
+	"github.com/hemzahk/wallet-api/internal/env"
 	"github.com/hemzahk/wallet-api/internal/gateway"
 	"github.com/hemzahk/wallet-api/internal/mailer"
 	"github.com/hemzahk/wallet-api/internal/ratelimiter"
 	"github.com/hemzahk/wallet-api/internal/store"
-
+	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
 
@@ -32,17 +34,55 @@ func main() {
 	// Logger
 	logger := zap.Must(zap.NewProduction()).Sugar()
 	defer logger.Sync()
-
-	cfg, err := conf.LoadFromEnv()
+	
+	// Load env file
+	err := godotenv.Load()
 	if err != nil {
-		logger.Fatal(err)
+		logger.Fatal("Error loading .env file")
+	}
+
+	cfg := config{
+		addr: env.GetString("ADDR"),
+		env: env.GetString("ENV"),
+		apiURL: env.GetString("EXTERNAL_URL"),
+		db: dbConfig{
+			addr: env.GetString("DB_ADDR"),
+			maxOpenConns: env.GetInt("DB_MAX_OPEN_CONNS"),
+			maxIdleConns: env.GetInt("DB_MAX_IDLE_CONNS"),
+			maxIdleTime: env.GetString("DB_MAX_IDLE_TIME"),
+		},
+		mail: mailConfig{
+			exp: time.Hour * 24 * 3,
+			fromEmail: env.GetString("FROM_EMAIL"),
+			mailTrap: mailTrapConfig{
+				username: env.GetString("MAILTRAP_USERNAME"),
+				password: env.GetString("MAILTRAP_PASSWORD"),
+			},
+		},
+		frontendURL: env.GetString("FRONTEND_URL"),
+		auth: authConfig{
+			token: tokenConfig{
+				secret: env.GetString("AUTH_TOKEN_SECRET"),
+				exp: time.Hour * 24 * 3, // 3 days
+				iss: "wallet", 
+			},
+		},
+		gateway: gatewayConfig{
+			webhookSecret: env.GetString("WEBHOOK_SECRET"),
+			baseURL: env.GetString("GATEWAY_BASE_URL"),
+		},
+		ratelimiter: ratelimiter.Config{
+			RequestPerTimeFrame: env.GetInt("RATELIMITER_REQUESTS_COUNT"),
+			TimeFrame: 5*time.Second,
+			Enabled: env.GetBool("RATELIMITER_ENABLED"),
+		},
 	}
 
 	db, err := database.New(
-		cfg.Db.Addr,
-		cfg.Db.MaxOpenConns,
-		cfg.Db.MaxIdleConns,
-		cfg.Db.MaxIdleTime,
+		cfg.db.addr,
+		cfg.db.maxOpenConns,
+		cfg.db.maxIdleConns,
+		cfg.db.maxIdleTime,
 	)
 
 	if err != nil {
@@ -55,33 +95,33 @@ func main() {
 	store := store.NewStorage(db)
 	txManager := dbtx.NewTxManager(db)
 
-	mailtrap, err := mailer.NewMailTrapClient(cfg.Mail.MailTrap.Username, cfg.Mail.MailTrap.Password, cfg.Mail.FromEmail)
+	mailtrap, err := mailer.NewMailTrapClient(cfg.mail.mailTrap.username, cfg.mail.mailTrap.password, cfg.mail.fromEmail)
 	if err != nil {
 		logger.Fatal(err)
 	}
 
 	jwtAuthenticator := auth.NewJWTAuthenticator(
-		cfg.Auth.Token.Secret,
-		cfg.Auth.Token.Iss,
-		cfg.Auth.Token.Iss,
+		cfg.auth.token.secret,
+		cfg.auth.token.iss,
+		cfg.auth.token.iss,
 	)
 
-	gateway := gateway.NewStubGateway(cfg.PaymentProcessor.WebhookSecret, cfg.PaymentProcessor.BaseURL)
+	gateway := gateway.NewStubGateway(cfg.gateway.webhookSecret, cfg.gateway.baseURL)
 
 	ratelimiter := ratelimiter.NewFixedWindowLimiter(
-		cfg.Ratelimiter.RequestPerTimeFrame,
-		cfg.Ratelimiter.TimeFrame,
+		cfg.ratelimiter.RequestPerTimeFrame,
+		cfg.ratelimiter.TimeFrame,
 	)
 
 	app := &application{
-		config:        cfg,
-		logger:        logger,
-		store:         store,
-		txManager:     txManager,
-		mailer:        mailtrap,
+		config: cfg,
+		logger: logger,
+		store: store,
+		txManager: txManager,
+		mailer: mailtrap,
 		authenticator: jwtAuthenticator,
-		gateway:       gateway,
-		limiter:       ratelimiter,
+		gateway: gateway,
+		limiter: ratelimiter,
 	}
 
 	mux := app.mount()
