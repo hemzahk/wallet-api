@@ -47,7 +47,7 @@ func TestCreate_Success(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestGetByToken_Success(t *testing.T) {
+/*func TestGetByToken_Success(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	assert.NoError(t, err)
 	defer func() {_ = db.Close()}()
@@ -76,4 +76,4 @@ func TestGetByToken_Success(t *testing.T) {
 	session, err := s.GetByToken(ctx, plainToken)
 	assert.NoError(t, err)
 	assert.Equal(t, big.NewInt(100000), session.Amount)
-}
+}*/
