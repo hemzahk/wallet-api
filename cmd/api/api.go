@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/hemzahk/wallet-api/config"
 	"github.com/hemzahk/wallet-api/docs"
 	"github.com/hemzahk/wallet-api/internal/auth"
 	"github.com/hemzahk/wallet-api/internal/dbtx"
@@ -29,60 +30,60 @@ import (
 )
 
 type application struct {
-	config config
-	logger *zap.SugaredLogger
-	store store.Storage
-	txManager dbtx.TxManager
-	mailer mailer.Client
+	config        *config.Config
+	logger        *zap.SugaredLogger
+	store         store.Storage
+	txManager     dbtx.TxManager
+	mailer        mailer.Client
 	authenticator auth.Authenticator
-	gateway gateway.PaymentGateway
-	limiter ratelimiter.Limiter
+	gateway       gateway.PaymentGateway
+	limiter       ratelimiter.Limiter
 }
 
-type config struct {
-	addr string
-	env  string
-	db dbConfig
-	apiURL string
-	frontendURL string
-	mail mailConfig
-	auth authConfig
-	gateway gatewayConfig
-	ratelimiter ratelimiter.Config
-}
+// type config struct {
+// 	addr        string
+// 	env         string
+// 	db          dbConfig
+// 	apiURL      string
+// 	frontendURL string
+// 	mail        mailConfig
+// 	auth        authConfig
+// 	gateway     gatewayConfig
+// 	ratelimiter ratelimiter.Config
+// }
 
-type dbConfig struct {
-	addr         string
-	maxOpenConns int
-	maxIdleConns int
-	maxIdleTime  string	
-}
+// type dbConfig struct {
+// 	addr         string
+// 	maxOpenConns int
+// 	maxIdleConns int
+// 	maxIdleTime  string
+// }
 
-type mailConfig struct {
-	mailTrap  mailTrapConfig
-	fromEmail string
-	exp       time.Duration
-}
+// type mailConfig struct {
+// 	mailTrap  mailTrapConfig
+// 	fromEmail string
+// 	exp       time.Duration
+// }
 
-type mailTrapConfig struct {
-	username string
-	password string
-}
+// type mailTrapConfig struct {
+// 	username string
+// 	password string
+// }
 
-type authConfig struct {
-	token tokenConfig
-}
+// type authConfig struct {
+// 	token tokenConfig
+// }
 
-type tokenConfig struct {
-	secret string
-	exp time.Duration
-	iss string
-}
+// type tokenConfig struct {
+// 	secret string
+// 	exp    time.Duration
+// 	iss    string
+// }
 
-type gatewayConfig struct {
-	webhookSecret string
-	baseURL string
-}
+// type gatewayConfig struct {
+// 	webhookSecret string
+// 	baseURL       string
+// }
 
 func (app *application) mount() http.Handler {
 	r := chi.NewRouter()
@@ -95,24 +96,24 @@ func (app *application) mount() http.Handler {
 	rateLimiterMiddleware := middlewares.NewRateLimiterMiddleware(app.limiter)
 
 	userService := users.NewService(app.store.Users,
-									app.store.Identities, 
-									app.store.Balances,
-									app.store.Merchants,
-									app.txManager, 
-									app.mailer, 
-									app.authenticator, 
-									app.logger)
+		app.store.Identities,
+		app.store.Balances,
+		app.store.Merchants,
+		app.txManager,
+		app.mailer,
+		app.authenticator,
+		app.logger)
 	userHandler := users.NewHandler(userService)
 	authMiddleware := middlewares.NewAuthMiddleware(app.authenticator, app.store.Users, app.store.Roles)
 	r.Use(rateLimiterMiddleware.RateLimiterMiddleware)
 	r.Route("/api/v1", func(r chi.Router) {
-		docsURL := fmt.Sprintf("%s/swagger/doc.json", app.config.addr)
+		docsURL := fmt.Sprintf("%s/swagger/doc.json", app.config.Addr)
 		r.Get("/swagger/*", httpSwagger.Handler(httpSwagger.URL(docsURL)))
 		healthCheckHandler := health.NewHandler(health.Config{
-			Env: app.config.env,
+			Env:     app.config.Env,
 			Version: version,
 		})
-		
+
 		r.Get("/health", healthCheckHandler.HealthCheck)
 
 		r.Route("/customers", func(r chi.Router) {
@@ -128,7 +129,7 @@ func (app *application) mount() http.Handler {
 
 		r.Post("/webhooks/top-ups", walletHandler.TopupWebhook)
 		r.Post("/webhooks/withdrawals", walletHandler.PayoutWebhook)
-		
+
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register/customer", userHandler.RegisterCustomer)
 			r.Post("/register/merchant", userHandler.RegisterMerchant)
@@ -141,23 +142,23 @@ func (app *application) mount() http.Handler {
 			r.Use(authMiddleware.AuthTokenMiddleware)
 			r.Get("/wallet", walletHandler.GetWallet)
 			r.Get("/wallet/transactions", walletHandler.GetTransactionHistory)
-			
+
 			paymentService := payments.NewService(app.store.CheckoutSessions,
-												  app.store.Merchants,
-												  app.store.Transactions,
-												  app.store.Balances, 
-												  app.store.RefundRequests,
-												  app.txManager,
-												)
+				app.store.Merchants,
+				app.store.Transactions,
+				app.store.Balances,
+				app.store.RefundRequests,
+				app.txManager,
+			)
 			paymentHandler := payments.NewHandler(paymentService)
 			r.Post("/checkout-sessions", authMiddleware.CheckRequiredRole("merchant", paymentHandler.CreateCheckoutSession))
-			
+
 			r.Group(func(r chi.Router) {
 				r.Use(idempotencyMiddleware.Wrap)
-				r.Post("/wallet/top-ups",authMiddleware.CheckRequiredRole("customer", walletHandler.Topup) )
+				r.Post("/wallet/top-ups", authMiddleware.CheckRequiredRole("customer", walletHandler.Topup))
 				r.Post("/wallet/transfers", authMiddleware.CheckRequiredRole("customer", walletHandler.Transfer))
-				r.Post("/wallet/withdrawals",authMiddleware.CheckRequiredRole("customer", walletHandler.Withdraw) )
-				r.Post("/checkout-sessions/{token}/pay",authMiddleware.CheckRequiredRole("customer", paymentHandler.Pay))
+				r.Post("/wallet/withdrawals", authMiddleware.CheckRequiredRole("customer", walletHandler.Withdraw))
+				r.Post("/checkout-sessions/{token}/pay", authMiddleware.CheckRequiredRole("customer", paymentHandler.Pay))
 				r.Post("/refunds", authMiddleware.CheckRequiredRole("customer", paymentHandler.RequestRefund))
 			})
 		})
@@ -167,17 +168,17 @@ func (app *application) mount() http.Handler {
 }
 
 func (app *application) run(mux http.Handler) error {
-	
+
 	docs.SwaggerInfo.Version = version
-	docs.SwaggerInfo.Host = app.config.apiURL
+	docs.SwaggerInfo.Host = app.config.ExternalURL
 	docs.SwaggerInfo.BasePath = "/api/v1"
 
 	srv := &http.Server{
-		Addr: app.config.addr,
-		Handler: mux,
+		Addr:         app.config.Addr,
+		Handler:      mux,
 		WriteTimeout: time.Second * 30,
-		ReadTimeout: time.Second * 30,
-		IdleTimeout: time.Minute,
+		ReadTimeout:  time.Second * 30,
+		IdleTimeout:  app.config.IdleTimeout,
 	}
 
 	shutdown := make(chan error)
@@ -188,7 +189,7 @@ func (app *application) run(mux http.Handler) error {
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 		s := <-quit
 
-		ctx, cancel := context.WithTimeout(context.Background(), 15 *time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
 		app.logger.Infow("signal caught", "signal", s.String())
@@ -196,7 +197,7 @@ func (app *application) run(mux http.Handler) error {
 		shutdown <- srv.Shutdown(ctx)
 	}()
 
-	app.logger.Infow("server has started", "addr", app.config.addr, "env", app.config.env)
+	app.logger.Infow("server has started", "addr", app.config.Addr, "env", app.config.Env)
 
 	err := srv.ListenAndServe()
 	if !errors.Is(err, http.ErrServerClosed) {
@@ -208,7 +209,7 @@ func (app *application) run(mux http.Handler) error {
 		return err
 	}
 
-	app.logger.Infow("server has stopped", "addr", app.config.addr, "env", app.config.env)
+	app.logger.Infow("server has stopped", "addr", app.config.Addr, "env", app.config.Env)
 
 	return nil
 }

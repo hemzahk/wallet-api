@@ -5,8 +5,6 @@ bin/
 logs
 *.log
 
-config/env.go
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
