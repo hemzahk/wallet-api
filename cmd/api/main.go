@@ -9,6 +9,7 @@ import (
 	"github.com/hemzahk/wallet-api/internal/mailer"
 	"github.com/hemzahk/wallet-api/internal/ratelimiter"
 	"github.com/hemzahk/wallet-api/internal/store"
+	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
 
@@ -31,6 +32,11 @@ func main() {
 	// Logger
 	logger := zap.Must(zap.NewProduction()).Sugar()
 	defer logger.Sync()
+
+	err := godotenv.Load()
+	if err != nil {
+		logger.Warn(err)
+	}
 
 	cfg, err := config.LoadWithEnvConfig()
 	if err != nil {

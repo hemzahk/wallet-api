@@ -40,51 +40,6 @@ type application struct {
 	limiter       ratelimiter.Limiter
 }
 
-// type config struct {
-// 	addr        string
-// 	env         string
-// 	db          dbConfig
-// 	apiURL      string
-// 	frontendURL string
-// 	mail        mailConfig
-// 	auth        authConfig
-// 	gateway     gatewayConfig
-// 	ratelimiter ratelimiter.Config
-// }
-
-// type dbConfig struct {
-// 	addr         string
-// 	maxOpenConns int
-// 	maxIdleConns int
-// 	maxIdleTime  string
-// }
-
-// type mailConfig struct {
-// 	mailTrap  mailTrapConfig
-// 	fromEmail string
-// 	exp       time.Duration
-// }
-
-// type mailTrapConfig struct {
-// 	username string
-// 	password string
-// }
-
-// type authConfig struct {
-// 	token tokenConfig
-// }
-
-// type tokenConfig struct {
-// 	secret string
-// 	exp    time.Duration
-// 	iss    string
-// }
-
-// type gatewayConfig struct {
-// 	webhookSecret string
-// 	baseURL       string
-// }
-
 func (app *application) mount() http.Handler {
 	r := chi.NewRouter()
 
